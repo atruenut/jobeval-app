@@ -9,14 +9,20 @@ contributions, statutory minimums, benefits) come from data packs published by
 
 ## Status
 
-Milestone 1 (foundation) is in place:
+Milestones 1 and 2 are in place:
 
 - `evalcore`: GUI-free C++17 engine. Exact decimal arithmetic, the pack rule language
   (parser, evaluator with explainable traces), pack loading with layering and validation,
   and a golden-test runner.
-- `eval-cli`: `validate`, `eval` and `test` commands, used by the data repo's CI.
+- Pack handling (M2): minisign signature verification (Ed25519 via vendored Monocypher,
+  SHA-512/SHA-256 in-house), catalog parsing, install planning along `extends` chains, and
+  `PackStore`, an offline cache that only accepts signed, hash-checked, validated packs,
+  refuses rollback to an older catalog, keeps the previous revision, and re-verifies cached
+  files on every load. It does no networking itself: callers supply a `Fetcher`.
+- `eval-cli`: `validate`, `eval`, `test`, `verify-catalog`, `install`, used by the data
+  repo's CI and by the live-catalog check here.
 
-Not built yet: pack download/verification, workspace file, the Qt interface, benefit and
+Not built yet: HTTP fetcher and the Qt interface, workspace file, benefit and
 unemployment programs, the timeline simulator.
 
 ## Build
@@ -36,7 +42,8 @@ ctest --test-dir build --output-on-failure
 |---|---|
 | `evalcore/include`, `evalcore/src` | Engine library |
 | `evalcore/cli` | `eval-cli` |
-| `evalcore/tests` | Unit tests |
+| `evalcore/tests` | Unit tests; `fixtures/` holds signed test catalogs made by `make_fixtures.py` with a throwaway TEST key |
+| `evalcore/third_party/monocypher` | Vendored Monocypher 4.0.3 (BSD-2-Clause OR CC0-1.0) |
 | `docs/` | Design notes |
 
 The pack format and rule language are specified in the data repo

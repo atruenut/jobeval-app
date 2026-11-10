@@ -5,6 +5,13 @@
 
 #include "evalcore/evaluator.hpp"
 #include "evalcore/golden.hpp"
+#include "evalcore/catalog.hpp"
+#include "evalcore/hash.hpp"
+#include "evalcore/minisign.hpp"
+#include "evalcore/packstore.hpp"
+
+#include <filesystem>
+#include <fstream>
 #include "evalcore/pack.hpp"
 
 using namespace jobeval;
@@ -349,6 +356,302 @@ static void test_golden() {
     CHECK(r.cases[1].failures.size() == 1 && r.cases[1].failures[0].find("expected 2766 but got 2766.75") != std::string::npos);
 }
 
+
+// ------------------------------------------------------------------ M2: packs on disk
+
+namespace fs = std::filesystem;
+
+static std::string fixture(const std::string& rel) {
+    std::string s;
+    if (!read_whole_file(std::string(JOBEVAL_FIXTURE_DIR) + "/" + rel, s)) {
+        ++g_failures;
+        std::printf("  FAILED: cannot read fixture %s\n", rel.c_str());
+    }
+    return s;
+}
+
+static std::string hex_of(const std::array<uint8_t, 32>& a) { return to_hex(a.data(), a.size()); }
+static std::string hex_of(const std::array<uint8_t, 64>& a) { return to_hex(a.data(), a.size()); }
+
+static void test_hashes() {
+    std::puts("hashes");
+    Json v = Json::parse(fixture("vectors/hashes.json"));
+    auto want = [&](const char* k) { return v.find(k)->str(); };
+    CHECK_EQ(hex_of(sha256(std::string())), want("sha256_empty"));
+    CHECK_EQ(hex_of(sha256(std::string("abc"))), want("sha256_abc"));
+    CHECK_EQ(sha256_hex(std::string(1000, 'a')), want("sha256_1000a"));
+    CHECK_EQ(hex_of(sha512(nullptr, 0)), want("sha512_empty"));
+    const std::string abc = "abc";
+    CHECK_EQ(hex_of(sha512(reinterpret_cast<const uint8_t*>(abc.data()), abc.size())), want("sha512_abc"));
+    const std::string thousand(1000, 'a');
+    CHECK_EQ(hex_of(sha512(reinterpret_cast<const uint8_t*>(thousand.data()), thousand.size())), want("sha512_1000a"));
+    CHECK_EQ(hex_of(blake2b512(reinterpret_cast<const uint8_t*>(abc.data()), abc.size())), want("blake2b_abc"));
+    // Block-boundary lengths exercise the padding paths (55/56/63/64 and 111/112/127/128).
+    for (size_t n : {55u, 56u, 63u, 64u, 65u, 111u, 112u, 127u, 128u, 129u}) {
+        std::string m(n, 'x');
+        CHECK(sha256_hex(m).size() == 64);
+        CHECK(to_hex(sha512(reinterpret_cast<const uint8_t*>(m.data()), m.size()).data(), 64).size() == 128);
+    }
+    Bytes b;
+    CHECK(base64_decode("aGVsbG8=", b) && std::string(b.begin(), b.end()) == "hello");
+    CHECK(base64_decode("aGVsbA==", b) && std::string(b.begin(), b.end()) == "hell");
+    CHECK(base64_decode("aGVs", b) && std::string(b.begin(), b.end()) == "hel");
+    CHECK(!base64_decode("aGVsbG8", b));    // missing padding
+    CHECK(!base64_decode("aGV$bG8=", b));   // bad character
+    CHECK(!base64_decode("a=Vs", b));       // padding in the wrong place
+    CHECK_EQ(base64_encode(reinterpret_cast<const uint8_t*>("hello"), 5), "aGVsbG8=");
+}
+
+static MinisignKey test_key() {
+    MinisignKey k;
+    std::string err;
+    CHECK(parse_minisign_public_key(fixture("test.pub"), k, err));
+    return k;
+}
+
+static void test_minisign() {
+    std::puts("minisign");
+    const MinisignKey key = test_key();
+    const std::string msg = fixture("vectors/message.txt");
+    const std::string ed = fixture("vectors/prehashed.minisig");
+    const std::string legacy = fixture("vectors/legacy.minisig");
+
+    SignatureCheck ok = verify_minisign(key, msg, ed);
+    CHECK(ok.ok);
+    CHECK_EQ(ok.trusted_comment, "timestamp:1 file:message.txt");
+    CHECK(verify_minisign(key, msg, legacy).ok);  // legacy "Ed" (unhashed) signatures
+    CHECK(verify_minisign(key, msg, ed + "\r\n").ok);
+
+    CHECK(!verify_minisign(key, msg + "x", ed).ok);  // altered data
+    SignatureCheck altered = verify_minisign(key, msg + "x", ed);
+    CHECK(altered.error.find("does not match the data") != std::string::npos);
+    CHECK(altered.trusted_comment.empty());
+
+    std::string forged = ed;
+    forged.replace(forged.find("timestamp:1"), 11, "timestamp:2");  // trusted comment is signed too
+    SignatureCheck tc = verify_minisign(key, msg, forged);
+    CHECK(!tc.ok);
+    CHECK(tc.error.find("trusted comment") != std::string::npos);
+
+    MinisignKey other_id = key;
+    other_id.key_id[0] ^= 1;
+    CHECK(verify_minisign(other_id, msg, ed).error.find("different key") != std::string::npos);
+    MinisignKey other_pk = key;
+    other_pk.public_key[5] ^= 1;
+    CHECK(!verify_minisign(other_pk, msg, ed).ok);
+
+    CHECK(!verify_minisign(key, msg, "").ok);
+    CHECK(!verify_minisign(key, msg, "untrusted comment: x\nAAAA\ntrusted comment: y\nAAAA\n").ok);
+    // The legacy file must not verify as if it were prehashed, and vice versa.
+    std::string swapped = legacy;
+    CHECK(!verify_minisign(key, msg + "\n", swapped).ok);
+
+    // Key parsing: bare base64, full .pub file, and rejects.
+    MinisignKey k;
+    std::string err;
+    CHECK(parse_minisign_public_key("untrusted comment: minisign public key X\n" + fixture("test.pub"), k, err));
+    CHECK(parse_minisign_public_key("RWTO7IvPGG06wlW/mdSpbzkrKXHcF9xgPI5AOWBeei+EJPZ/dQw16RrC", k, err));  // the published key
+    CHECK(!parse_minisign_public_key("not base64!", k, err));
+    CHECK(!parse_minisign_public_key("QUJD", k, err));
+}
+
+static void test_catalog() {
+    std::puts("catalog");
+    Catalog c;
+    Diagnostics diag;
+    CHECK(parse_catalog(fixture("site_v1/index.json"), c, diag));
+    CHECK_EQ(std::to_string(c.packs.size()), "2");
+    CHECK_EQ(c.generated, "2026-11-01T00:00:00Z");
+    CHECK(c.find("T-XX-2026") != nullptr && c.find("T-XX-2026")->extends == "T-2026");
+    CHECK(c.find("nope") == nullptr);
+
+    CHECK(is_safe_pack_path("packs/CA-2026-r1.93616814.json"));
+    CHECK(!is_safe_pack_path("packs/../evil.json"));
+    CHECK(!is_safe_pack_path("../packs/x.json"));
+    CHECK(!is_safe_pack_path("packs/sub/x.json"));
+    CHECK(!is_safe_pack_path("packs/x.exe"));
+    CHECK(!is_safe_pack_path("/etc/passwd"));
+    CHECK(!is_safe_pack_path("packs/.hidden.json"));
+    CHECK(!is_safe_pack_path("packs/a b.json"));
+    CHECK(!is_safe_pack_path("packs\\x.json"));
+
+    std::string bad = fixture("site_v1/index.json");
+    bad.replace(bad.find("\"file\": \"packs/T-2026"), 20, "\"file\": \"packs/../T-");
+    Diagnostics d2;
+    Catalog c2;
+    CHECK(!parse_catalog(bad, c2, d2));
+    CHECK(d2.format().find("unsafe") != std::string::npos);
+    Diagnostics d3;
+    CHECK(!parse_catalog("{\"catalog\":2,\"generated\":\"x\",\"packs\":[]}", c2, d3));
+    CHECK(!parse_catalog("[]", c2, d3));
+
+    std::vector<const CatalogEntry*> plan;
+    Diagnostics d4;
+    CHECK(plan_install(c, "T-XX-2026", {}, plan, d4));
+    CHECK(plan.size() == 2 && plan[0]->id == "T-2026" && plan[1]->id == "T-XX-2026");  // parent first
+    std::map<std::string, InstallRecord> have;
+    have["T-2026"] = {"T-2026", 1, c.find("T-2026")->file, c.find("T-2026")->sha256};
+    CHECK(plan_install(c, "T-XX-2026", have, plan, d4));
+    CHECK(plan.size() == 1 && plan[0]->id == "T-XX-2026");
+    CHECK(!plan_install(c, "missing", {}, plan, d4));
+    Catalog future = c;
+    future.packs[0].requires_engine = ">=9.0";
+    Diagnostics d5;
+    CHECK(!plan_install(future, "T-XX-2026", {}, plan, d5));
+    CHECK(d5.format().find("update the app") != std::string::npos);
+}
+
+static fs::path scratch_dir(const char* name) {
+    fs::path p = fs::temp_directory_path() / (std::string("jobeval-test-") + name);
+    std::error_code ec;
+    fs::remove_all(p, ec);
+    fs::create_directories(p);
+    return p;
+}
+
+static fs::path copy_site(const char* version, const fs::path& to) {
+    fs::copy(fs::path(JOBEVAL_FIXTURE_DIR) / version, to, fs::copy_options::recursive);
+    return to;
+}
+
+static std::string slot_tax(PackStore& store, const char* pack, const char* gross) {
+    PackSet set;
+    Diagnostics diag;
+    store.load_installed(set, diag);
+    auto b = set.bundle_for(pack, diag);
+    if (!b) return "bundle failed: " + diag.format();
+    EvalInputs in;
+    in.values["gross"] = N(gross);
+    Evaluator ev(b, in);
+    return ev.slot("income_tax").to_string();
+}
+
+static void test_packstore() {
+    std::puts("packstore");
+    const MinisignKey key = test_key();
+    const fs::path root = scratch_dir("store");
+    const fs::path v1 = copy_site("site_v1", root / "v1");
+    const fs::path v2 = copy_site("site_v2", root / "v2");
+    DirFetcher f1((root / "v1").string()), f2((root / "v2").string());
+
+    {  // install, no-op reinstall, upgrade, previous kept, rollback
+        PackStore store((root / "cache").string(), key);
+        Catalog cat;
+        Diagnostics diag;
+        CHECK(store.refresh_catalog(f1, cat, diag));
+        CHECK(store.install(cat, "T-XX-2026", f1, diag));
+        CHECK_EQ(std::to_string(store.installed().size()), "2");
+        CHECK_EQ(slot_tax(store, "T-XX-2026", "20000"), "2700");  // 700 + 2000
+        CHECK(store.install(cat, "T-XX-2026", f1, diag));          // already installed: no-op
+        CHECK(store.updates_available(cat).empty());
+
+        Catalog cat2;
+        CHECK(store.refresh_catalog(f2, cat2, diag));
+        CHECK_EQ(std::to_string(store.updates_available(cat2).size()), "1");
+        CHECK(store.install(cat2, "T-XX-2026", f2, diag));
+        CHECK_EQ(std::to_string(store.installed().at("T-XX-2026").revision), "2");
+        CHECK_EQ(std::to_string(store.previous().at("T-XX-2026").revision), "1");
+        CHECK_EQ(slot_tax(store, "T-XX-2026", "20000"), "3100");   // 700 + 2400
+
+        CHECK(store.rollback("T-XX-2026", diag));
+        CHECK_EQ(std::to_string(store.installed().at("T-XX-2026").revision), "1");
+        CHECK_EQ(slot_tax(store, "T-XX-2026", "20000"), "2700");
+        CHECK(!store.rollback("T-2026", diag));  // never replaced: nothing to go back to
+
+        // A validly signed but OLDER catalog is refused once a newer one is cached.
+        Diagnostics d_old;
+        Catalog old_cat;
+        CHECK(!store.refresh_catalog(f1, old_cat, d_old));
+        CHECK(d_old.format().find("older than the one already cached") != std::string::npos);
+        Catalog cached;
+        Diagnostics d_c;
+        CHECK(store.load_cached_catalog(cached, d_c));
+        CHECK_EQ(cached.generated, "2026-11-02T00:00:00Z");  // cache kept the newer catalog
+    }
+    {  // a tampered pack download is refused and leaves the cache untouched
+        const fs::path bad = copy_site("site_v1", root / "tampered_pack");
+        std::string path;
+        for (auto& e : fs::directory_iterator(bad / "packs")) {
+            if (e.path().filename().string().rfind("T-XX-2026", 0) == 0) path = e.path().string();
+        }
+        std::string text;
+        read_whole_file(path, text);
+        text[text.find("0.10")] = '9';
+        { std::ofstream(path, std::ios::binary | std::ios::trunc) << text; }
+        PackStore store((root / "cache_tp").string(), key);
+        DirFetcher fb(bad.string());
+        Catalog cat;
+        Diagnostics diag;
+        CHECK(store.refresh_catalog(fb, cat, diag));  // catalog itself is fine
+        CHECK(!store.install(cat, "T-XX-2026", fb, diag));
+        CHECK(diag.format().find("hash mismatch") != std::string::npos);
+        CHECK(store.installed().empty());
+    }
+    {  // a modified catalog fails its signature
+        const fs::path bad = copy_site("site_v1", root / "tampered_index");
+        std::string idx;
+        read_whole_file((bad / "index.json").string(), idx);
+        idx.replace(idx.find("2026-11-01"), 10, "2099-01-01");
+        { std::ofstream(bad / "index.json", std::ios::binary | std::ios::trunc) << idx; }
+        PackStore store((root / "cache_ti").string(), key);
+        DirFetcher fb(bad.string());
+        Catalog cat;
+        Diagnostics diag;
+        CHECK(!store.refresh_catalog(fb, cat, diag));
+        CHECK(diag.format().find("signature check failed") != std::string::npos);
+        CHECK(!fs::exists(root / "cache_ti" / "catalog" / "index.json"));  // nothing cached
+    }
+    {  // unsigned catalogs are refused
+        const fs::path bad = copy_site("site_v1", root / "unsigned");
+        fs::remove(bad / "index.json.minisig");
+        PackStore store((root / "cache_un").string(), key);
+        DirFetcher fb(bad.string());
+        Catalog cat;
+        Diagnostics diag;
+        CHECK(!store.refresh_catalog(fb, cat, diag));
+        CHECK(diag.format().find("unsigned catalogs are refused") != std::string::npos);
+    }
+    {  // wrong key
+        MinisignKey wrong = key;
+        wrong.key_id[3] ^= 0x40;
+        PackStore store((root / "cache_wk").string(), wrong);
+        Catalog cat;
+        Diagnostics diag;
+        CHECK(!store.refresh_catalog(f1, cat, diag));
+    }
+    {  // cached pack files are re-verified on every load
+        PackStore store((root / "cache_ct").string(), key);
+        Catalog cat;
+        Diagnostics diag;
+        CHECK(store.refresh_catalog(f1, cat, diag));
+        CHECK(store.install(cat, "T-2026", f1, diag));
+        const std::string file = (root / "cache_ct" / store.installed().at("T-2026").file).string();
+        std::string text;
+        read_whole_file(file, text);
+        text[text.find("13000")] = '9';
+        { std::ofstream(file, std::ios::binary | std::ios::trunc) << text; }
+        PackSet set;
+        Diagnostics d2;
+        CHECK(!store.load_installed(set, d2));
+        CHECK(d2.format().find("recorded hash") != std::string::npos);
+    }
+    {  // a catalog naming a missing file fails cleanly, all-or-nothing
+        const fs::path bad = copy_site("site_v1", root / "missing_file");
+        for (auto& e : fs::directory_iterator(bad / "packs")) {
+            if (e.path().filename().string().rfind("T-XX-2026", 0) == 0) fs::remove(e.path());
+        }
+        PackStore store((root / "cache_mf").string(), key);
+        DirFetcher fb(bad.string());
+        Catalog cat;
+        Diagnostics diag;
+        CHECK(store.refresh_catalog(fb, cat, diag));
+        CHECK(!store.install(cat, "T-XX-2026", fb, diag));
+        CHECK(store.installed().empty());  // the parent was not installed either
+    }
+    std::error_code ec;
+    fs::remove_all(root, ec);
+}
+
 int main() {
     test_decimal();
     test_json();
@@ -356,6 +659,10 @@ int main() {
     test_schedules();
     test_packs();
     test_golden();
+    test_hashes();
+    test_minisign();
+    test_catalog();
+    test_packstore();
     std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);
     return g_failures;
 }

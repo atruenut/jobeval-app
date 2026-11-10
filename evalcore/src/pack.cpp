@@ -113,6 +113,8 @@ bool engine_satisfies(const std::string& constraint, std::string& why) {
 
 }  // namespace
 
+bool engine_supports(const std::string& constraint, std::string& why) { return engine_satisfies(constraint, why); }
+
 // ------------------------------------------------------------------ load_pack
 
 bool load_pack(const Json& doc, const std::string& origin, Pack& out, Diagnostics& diag) {
