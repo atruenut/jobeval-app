@@ -90,6 +90,7 @@ jobs:
             mingw-w64-ucrt-x86_64-cmake
             mingw-w64-ucrt-x86_64-ninja
             mingw-w64-ucrt-x86_64-qt6-base
+            mingw-w64-ucrt-x86_64-qt6-tools
       - name: Build
         run: |
           cmake -S . -B build -G Ninja -DJOBEVAL_BUILD_APP=ON -DCMAKE_BUILD_TYPE=Release
