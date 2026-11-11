@@ -1,6 +1,6 @@
 // The "real hourly" figure: what a job pays per hour of your life it actually consumes.
 //
-//   value = take-home pay + employer benefits - commuting costs - work-related costs
+//   value = take-home pay + employer benefits - commuting costs - work-related costs - your benefit premiums
 //   time  = hours worked + commuting hours + unpaid time at work (breaks, changing, waiting)
 //   real hourly = value / time
 //
@@ -24,6 +24,7 @@ struct RealHourlyInput {
 
     // Schedule.
     Decimal paid_vacation_weeks;  // paid weeks in which you do not work (no commute, no hours)
+    Decimal paid_days_off;        // further paid days not worked per year: statutory holidays, sick days
     Decimal days_per_week;        // days actually worked per working week
     Decimal unpaid_minutes_per_day;  // unpaid breaks, changing, waiting for shifts
 
@@ -36,6 +37,7 @@ struct RealHourlyInput {
 
     // Other money.
     Decimal work_costs_annual;       // uniforms, tools, phone, licences you pay for
+    Decimal benefit_premiums_monthly;  // your share of benefit premiums, union dues and similar, per month
     Decimal benefits_monthly_value;  // employer-paid health/dental/etc., per month
     Decimal pension_match_percent;   // employer pension/RRSP match as % of gross (0-100)
     Decimal other_benefits_annual;   // anything else with a cash value
@@ -57,6 +59,7 @@ struct RealHourlyResult {
     Decimal transit_cost;
     Decimal commute_cost;       // sum of the three above
     Decimal work_costs;
+    Decimal benefit_premiums;   // annual
     Decimal benefits_value;     // health etc. + pension match + other
     Decimal pension_match_value;
 

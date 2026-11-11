@@ -3,7 +3,7 @@
 namespace jobeval {
 
 bool compute_real_hourly(const RealHourlyInput& in, RealHourlyResult& out, std::string& error) {
-    const Decimal* nonneg[] = {&in.hours_per_week, &in.paid_weeks, &in.paid_vacation_weeks, &in.days_per_week,
+    const Decimal* nonneg[] = {&in.hours_per_week, &in.paid_weeks, &in.paid_vacation_weeks, &in.paid_days_off, &in.benefit_premiums_monthly, &in.days_per_week,
                                &in.unpaid_minutes_per_day, &in.commute_distance, &in.commute_minutes,
                                &in.cost_per_distance, &in.daily_parking_and_tolls, &in.daily_transit_fare,
                                &in.work_costs_annual, &in.benefits_monthly_value, &in.pension_match_percent,
@@ -33,9 +33,15 @@ bool compute_real_hourly(const RealHourlyInput& in, RealHourlyResult& out, std::
     RealHourlyResult r;
 
     r.weeks_worked = in.paid_weeks - in.paid_vacation_weeks;
-    r.days_worked = in.days_per_week * r.weeks_worked;
+    const Decimal scheduled_days = in.days_per_week * r.weeks_worked;
+    if (in.paid_days_off > scheduled_days) {
+        error = "paid days off exceed the days you are scheduled to work";
+        return false;
+    }
+    r.days_worked = scheduled_days - in.paid_days_off;
     r.hours_paid = in.hours_per_week * in.paid_weeks;
     r.hours_worked = in.hours_per_week * r.weeks_worked;
+    if (!in.days_per_week.is_zero()) r.hours_worked = r.hours_worked - in.paid_days_off * in.hours_per_week / in.days_per_week;
     r.commute_hours = two * in.commute_minutes * r.days_worked / sixty;
     r.unpaid_hours = in.unpaid_minutes_per_day * r.days_worked / sixty;
     r.total_hours = r.hours_worked + r.commute_hours + r.unpaid_hours;
@@ -46,10 +52,11 @@ bool compute_real_hourly(const RealHourlyInput& in, RealHourlyResult& out, std::
     r.transit_cost = in.daily_transit_fare * r.days_worked;
     r.commute_cost = r.vehicle_cost + r.parking_and_tolls + r.transit_cost;
     r.work_costs = in.work_costs_annual;
+    r.benefit_premiums = in.benefit_premiums_monthly * twelve;
     r.pension_match_value = in.gross_annual * in.pension_match_percent / Decimal::from_int(100);
     r.benefits_value = in.benefits_monthly_value * twelve + r.pension_match_value + in.other_benefits_annual;
 
-    r.value_annual = in.net_annual + r.benefits_value - r.commute_cost - r.work_costs;
+    r.value_annual = in.net_annual + r.benefits_value - r.commute_cost - r.work_costs - r.benefit_premiums;
     if (!r.hours_paid.is_zero()) r.take_home_per_hour_paid = in.net_annual / r.hours_paid;
     if (!r.hours_worked.is_zero()) r.take_home_per_hour_worked = in.net_annual / r.hours_worked;
     if (!r.total_hours.is_zero()) r.real_hourly = r.value_annual / r.total_hours;

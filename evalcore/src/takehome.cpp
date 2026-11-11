@@ -1,5 +1,7 @@
 #include "evalcore/takehome.hpp"
 
+#include <algorithm>
+
 namespace jobeval {
 
 namespace {
@@ -26,8 +28,9 @@ bool slot_lines(Evaluator& ev, const Bundle& b, const char* slot, std::vector<Sl
 bool compute_take_home(const std::shared_ptr<const Bundle>& bundle, const TakeHomeInput& in, TakeHomeResult& out,
                        std::vector<TraceEntry>& trace, std::string& error) {
     try {
-        if (in.hourly_wage.is_negative() || in.hours_per_week.is_negative() || in.weeks_per_year.is_negative()) {
-            error = "wage, hours and weeks cannot be negative";
+        if (in.hourly_wage.is_negative() || in.hours_per_week.is_negative() || in.weeks_per_year.is_negative() ||
+            in.other_pay_annual.is_negative() || in.base_pay_annual.is_negative()) {
+            error = "wage, hours, weeks and pay cannot be negative";
             return false;
         }
         TakeHomeResult r;
@@ -38,29 +41,53 @@ bool compute_take_home(const std::shared_ptr<const Bundle>& bundle, const TakeHo
         ei.values = in.extra;
         ei.values["wage"] = Value::num(in.hourly_wage);
 
-        // Weekly pay: straight time up to the legal threshold, then the overtime rate.
-        Decimal weekly = in.hourly_wage * in.hours_per_week;
+        // Weekly pay: every hour earns the highest overtime rate whose threshold it is beyond
+        // (never less than the straight-time wage); tiers come from the law (pack) and from
+        // company policy.
+        std::vector<OvertimeTier> tiers = in.company_overtime;
         std::vector<TraceEntry> ot_trace;
         auto rate_slot = bundle->slots.find("overtime_rate");
         auto thr_slot = bundle->slots.find("overtime_threshold_hours");
-        if (in.use_statutory_overtime && rate_slot != bundle->slots.end() && thr_slot != bundle->slots.end() &&
-            rate_slot->second.size() == 1 && thr_slot->second.size() == 1) {
+        if (rate_slot != bundle->slots.end() && thr_slot != bundle->slots.end() && rate_slot->second.size() == 1 &&
+            thr_slot->second.size() == 1) {
             EvalInputs probe = ei;
             probe.values["gross_annual"] = Value::num(Decimal());
             Evaluator ot(bundle, probe);
-            const Decimal threshold = ot.rule(thr_slot->second[0]).as_num();
-            const Decimal rate = max(ot.rule(rate_slot->second[0]).as_num(), in.hourly_wage);
+            r.legal_overtime_threshold = ot.rule(thr_slot->second[0]).as_num();
+            r.legal_overtime_rate = ot.rule(rate_slot->second[0]).as_num();
             ot_trace = ot.trace();
-            if (in.hours_per_week > threshold) {
-                const Decimal extra_hours = in.hours_per_week - threshold;
-                weekly = in.hourly_wage * threshold + rate * extra_hours;
+            if (in.use_statutory_overtime) tiers.push_back({r.legal_overtime_threshold, r.legal_overtime_rate});
+        }
+        Decimal weekly = in.hourly_wage * in.hours_per_week;
+        {
+            std::vector<Decimal> cuts;  // distinct thresholds inside (0, hours)
+            for (const auto& t : tiers)
+                if (t.threshold_hours > Decimal() && t.threshold_hours < in.hours_per_week) cuts.push_back(t.threshold_hours);
+            std::sort(cuts.begin(), cuts.end());
+            cuts.erase(std::unique(cuts.begin(), cuts.end()), cuts.end());
+            Decimal pay;
+            Decimal lo;
+            std::vector<Decimal> bounds = cuts;
+            bounds.push_back(in.hours_per_week);
+            for (const Decimal& hi : bounds) {
+                Decimal rate = in.hourly_wage;
+                for (const auto& t : tiers)
+                    if (t.threshold_hours <= lo) rate = max(rate, t.hourly_rate);
+                pay = pay + rate * (hi - lo);
+                lo = hi;
+            }
+            if (!cuts.empty()) {
+                weekly = pay;
                 r.overtime_applied = true;
-                r.overtime_hours_per_week = extra_hours;
-                r.overtime_rate = rate;
-                r.overtime_pay_annual = rate * extra_hours * in.weeks_per_year;
+                r.overtime_hours_per_week = in.hours_per_week - cuts.front();
+                const Decimal straight = in.hourly_wage * cuts.front();
+                const Decimal ot_week = pay - straight;
+                r.overtime_pay_annual = ot_week * in.weeks_per_year;
+                r.overtime_rate = ot_week / r.overtime_hours_per_week;
             }
         }
-        r.gross_annual = weekly * in.weeks_per_year;
+        r.other_pay_annual = in.other_pay_annual;
+        r.gross_annual = (in.has_base_pay_override ? in.base_pay_annual : weekly * in.weeks_per_year) + in.other_pay_annual;
         ei.values["gross_annual"] = Value::num(r.gross_annual);
         Evaluator ev(bundle, ei);
 

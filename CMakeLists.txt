@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(jobeval VERSION 0.1.0 LANGUAGES C CXX)
+project(jobeval VERSION 0.2.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -23,6 +23,7 @@ add_library(evalcore STATIC
   evalcore/src/packstore.cpp
   evalcore/src/takehome.cpp
   evalcore/src/realhourly.cpp
+  evalcore/src/jobcalc.cpp
   evalcore/src/decimal.cpp
   evalcore/src/json.cpp
   evalcore/src/value.cpp

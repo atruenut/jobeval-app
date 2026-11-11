@@ -81,6 +81,9 @@ RegionPage::RegionPage(PackService* service, QWidget* parent) : QWidget(parent),
 
     root->addStretch(1);
     auto* bottom = new QHBoxLayout;
+    back_ = new QPushButton(tr("Back"));
+    back_->hide();
+    bottom->addWidget(back_);
     bottom->addStretch(1);
     go_ = new QPushButton(tr("Continue"));
     go_->setObjectName("primary");
@@ -101,6 +104,7 @@ RegionPage::RegionPage(PackService* service, QWidget* parent) : QWidget(parent),
         setStatus(QString());
         service_->refreshAsync();
     });
+    connect(back_, &QPushButton::clicked, this, [this]() { Q_EMIT cancelRequested(); });
     connect(go_, &QPushButton::clicked, this, [this]() { Q_EMIT continueRequested(selectedPackId()); });
     connect(service_, &PackService::busyChanged, this, [this](bool busy, const QString& status) {
         progress_->setVisible(busy);
@@ -162,6 +166,8 @@ void RegionPage::selectPack(const QString& packId) {
     if (si >= 0) subregion_->setCurrentIndex(si);
     updateState();
 }
+
+void RegionPage::setCancelable(bool on) { back_->setVisible(on); }
 
 void RegionPage::setStatus(const QString& text, bool error) {
     message_->setText(text);

@@ -22,9 +22,11 @@ public:
     // Rebuild the lists from the service's catalog and refresh the status line.
     void reload();
     void setStatus(const QString& text, bool error = false);
+    void setCancelable(bool on);
 
 Q_SIGNALS:
     void continueRequested(const QString& packId);
+    void cancelRequested();
 
 private:
     void updateState();
@@ -40,5 +42,6 @@ private:
     QPushButton* download_;
     QPushButton* refresh_;
     QPushButton* go_;
+    QPushButton* back_;
     QProgressBar* progress_;
 };

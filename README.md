@@ -12,7 +12,7 @@ contributions, statutory minimums, benefits) come from data packs published by
 Milestones 1-3 are done: engine and rule language, signed pack catalog with an offline
 cache, and a Qt desktop app (pick a region, enter wage and hours, see take-home with a full
 breakdown and explanation). Only Canada / New Brunswick 2026 packs exist so far.
-Roadmap and log: `docs/DEVELOPMENT.md`. Design: `docs/ARCHITECTURE.md`. Contributing:
+You can keep several jobs in a project, compare them side by side, and save, load, import and export them (`docs/FILE_FORMAT.md`). Roadmap and log: `docs/DEVELOPMENT.md`. Design: `docs/ARCHITECTURE.md`. Contributing:
 `CONTRIBUTING.md`.
 
 **Windows download:** GitHub → Actions → latest run on `main` → artifact `JobEvaluator-windows`.

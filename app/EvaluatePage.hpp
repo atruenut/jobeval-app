@@ -5,6 +5,7 @@
 #include <QWidget>
 #include <memory>
 
+#include "JobModel.hpp"
 #include "evalcore/catalog.hpp"
 #include "evalcore/pack.hpp"
 
@@ -15,39 +16,60 @@ class QDoubleSpinBox;
 class QFormLayout;
 class QGroupBox;
 class QLabel;
+class QLineEdit;
 class QPlainTextEdit;
+class QPushButton;
 class QTableWidget;
 
-// Step 2: describe a job and see what you keep and what it really pays per hour of your
-// life. Recalculates live on every change.
+// Edits one job and shows what it pays. Recalculates live on every change.
 class EvaluatePage : public QWidget {
     Q_OBJECT
 public:
     explicit EvaluatePage(QWidget* parent = nullptr);
 
-    void setRegion(const std::shared_ptr<const jobeval::Bundle>& bundle, const jobeval::CatalogEntry* entry,
-                   const QString& title);
-
-    // All user inputs by key, for persistence.
-    QVariantMap state() const;
-    void setState(const QVariantMap& values);
+    // `bundle` is null when the job's region rules are not downloaded; `regionTitle` names the region.
+    void setJob(const Job& job, const std::shared_ptr<const jobeval::Bundle>& bundle,
+                const jobeval::CatalogEntry* entry, const QString& regionTitle);
+    void setJobName(const QString& name);
 
 Q_SIGNALS:
     void changeRegionRequested();
-    void inputsChanged();
+    // Emitted after any edit; the owner stores these back into the job.
+    void jobEdited(const QString& name, const QString& notes, const QVariantMap& state);
 
 private:
+    enum class Unit { Plain, Hours, Weeks, Days, Minutes, Percent, Times, Dist, PerHour, PerDay, PerMonth, PerYear, PerDist, Money };
+    struct Field {
+        QDoubleSpinBox* box = nullptr;
+        QWidget* label = nullptr;
+        Unit unit = Unit::Plain;
+    };
+
     void recalc();
+    void emitEdited();
     void buildExtraInputs();
-    QDoubleSpinBox* addField(QFormLayout* form, const QString& key, const QString& label, double min, double max,
-                             int decimals, double value, const QString& suffix, const QString& tip = QString());
-    void updateUnitLabels();
+    Field& addField(QFormLayout* form, const QString& key, const QString& label, Unit unit, const QString& tip);
+    void applyUnits();
+    void updateVisibility();
+    QVariantMap collectState() const;
+    QString suffixFor(Unit u) const;
 
     std::shared_ptr<const jobeval::Bundle> bundle_;
+    QString currency_;
+    bool loading_ = false;
     QLabel* regionTitle_;
-    QMap<QString, QDoubleSpinBox*> fields_;
+    QLineEdit* name_;
+    QPlainTextEdit* notes_;
+    QLabel* missing_;
+    QWidget* body_;
+    QMap<QString, Field> fields_;
     QMap<QString, QDoubleSpinBox*> extras_;
-    QCheckBox* overtime_;
+    QFormLayout* payForm_;
+    QFormLayout* otForm_;
+    QGroupBox* otBox_;
+    QComboBox* basis_;
+    QComboBox* otMode_;
+    QCheckBox* otLegal_;
     QComboBox* unit_;
     QDateEdit* asOf_;
     QFormLayout* extraForm_;
