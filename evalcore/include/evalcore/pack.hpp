@@ -150,4 +150,8 @@ const Json& param_value_on(const ParamDef& p, const std::string& date);
 
 bool is_iso_date(const std::string& s);
 
+// True if this engine can run a pack declaring `constraint` (">=MAJOR.MINOR"); otherwise `why`
+// explains, in words suitable for showing to the user.
+bool engine_supports(const std::string& constraint, std::string& why);
+
 }  // namespace jobeval

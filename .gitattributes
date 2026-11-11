@@ -1,0 +1,11 @@
+# Signed and hashed fixtures must stay byte-exact on every platform (no CRLF conversion).
+evalcore/tests/fixtures/** -text
+# Everything else: LF in the repository, native endings are not needed for any of it.
+*.cpp text eol=lf
+*.hpp text eol=lf
+*.c text eol=lf
+*.h text eol=lf
+*.py text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+CMakeLists.txt text eol=lf

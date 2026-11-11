@@ -54,3 +54,34 @@ jobs:
         with:
           name: eval-cli-windows
           path: build/eval-cli.exe
+
+  # Verifies the REAL published catalog with the app's own verifier: signature made by
+  # actual minisign, hashes of every pack, then installs a pack into a fresh cache and
+  # evaluates it. Catches any format drift between the data repo and this engine.
+  live-catalog:
+    runs-on: ubuntu-latest
+    env:
+      SITE: https://atruenut.github.io/jobeval-data
+      PACK_SIGNING_PUBLIC_KEY: RWTO7IvPGG06wlW/mdSpbzkrKXHcF9xgPI5AOWBeei+EJPZ/dQw16RrC
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build eval-cli
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DJOBEVAL_BUILD_TESTS=OFF
+          cmake --build build --target eval-cli -j
+      - name: Download the published catalog
+        run: |
+          mkdir -p site/packs
+          curl -fsSL -o site/index.json "$SITE/index.json"
+          curl -fsSL -o site/index.json.minisig "$SITE/index.json.minisig"
+          for f in $(python3 -c "import json; print(' '.join(p['file'] for p in json.load(open('site/index.json'))['packs']))"); do
+            curl -fsSL -o "site/$f" "$SITE/$f"
+          done
+      - name: Verify signature and pack hashes
+        run: build/eval-cli verify-catalog --pubkey "$PACK_SIGNING_PUBLIC_KEY" site
+      - name: Install and evaluate from a fresh cache
+        run: |
+          build/eval-cli install CA-NB-2026 --source site --cache cache --pubkey "$PACK_SIGNING_PUBLIC_KEY"
+          build/eval-cli eval CA-NB-2026 --cache cache --date 2026-11-10 \
+            --input gross_annual=50000 --input wage=20 | tee out.txt
+          grep -E '^cpp.base +2766.75$' out.txt

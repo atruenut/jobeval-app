@@ -10,7 +10,9 @@
 
 #include "evalcore/evaluator.hpp"
 #include "evalcore/golden.hpp"
+#include "evalcore/hash.hpp"
 #include "evalcore/pack.hpp"
+#include "evalcore/packstore.hpp"
 
 namespace fs = std::filesystem;
 using namespace jobeval;
@@ -20,8 +22,11 @@ namespace {
 const char* kUsage =
     "usage:\n"
     "  eval-cli validate <packs-dir|pack.json>...         check packs (schema, references, tiers)\n"
-    "  eval-cli eval <pack-id> --packs <dir> [--date YYYY-MM-DD] [--input name=value]... [--trace]\n"
+    "  eval-cli eval <pack-id> (--packs <dir> | --cache <dir>) [--date YYYY-MM-DD] [--input name=value]... [--trace]\n"
     "  eval-cli test --packs <dir> <suite.json|dir>...    run golden tests\n"
+    "  eval-cli verify-catalog --pubkey <key|@file> <site-dir>   check a downloaded catalog: signature, then every pack's hash\n"
+    "  eval-cli install <pack-id> --source <site-dir> --cache <dir> --pubkey <key|@file>\n"
+    "                                                     verify and install a pack (and what it extends) into a cache\n"
     "  eval-cli functions                                 list rule-language functions\n"
     "exit status: 0 ok, 1 failures, 2 usage or I/O error\n";
 
@@ -99,12 +104,13 @@ int cmd_validate(const std::vector<std::string>& args) {
 }
 
 int cmd_eval(const std::vector<std::string>& args) {
-    std::string pack_id, packs_dir, date;
+    std::string pack_id, packs_dir, cache_dir, date;
     std::vector<std::pair<std::string, std::string>> inputs;
     bool trace = false;
     for (size_t i = 0; i < args.size(); ++i) {
         const std::string& a = args[i];
         if (a == "--packs" && i + 1 < args.size()) packs_dir = args[++i];
+        else if (a == "--cache" && i + 1 < args.size()) cache_dir = args[++i];
         else if (a == "--date" && i + 1 < args.size()) date = args[++i];
         else if (a == "--trace") trace = true;
         else if (a == "--input" && i + 1 < args.size()) {
@@ -121,13 +127,17 @@ int cmd_eval(const std::vector<std::string>& args) {
             return 2;
         }
     }
-    if (pack_id.empty() || packs_dir.empty()) {
+    if (pack_id.empty() || (packs_dir.empty() == cache_dir.empty())) {
         std::fputs(kUsage, stderr);
         return 2;
     }
     PackSet set;
     Diagnostics diag;
-    load_packs({packs_dir}, set, diag);
+    if (!cache_dir.empty()) {
+        PackStore(cache_dir, MinisignKey{}).load_installed(set, diag);  // hashes are re-verified on load
+    } else {
+        load_packs({packs_dir}, set, diag);
+    }
     auto bundle = set.bundle_for(pack_id, diag);
     if (!bundle) {
         std::fputs(diag.format().c_str(), stderr);
@@ -213,6 +223,103 @@ int cmd_test(const std::vector<std::string>& args) {
     return failed > 0 ? 1 : 0;
 }
 
+bool load_pubkey(const std::string& arg, MinisignKey& key) {
+    std::string text = arg;
+    if (!arg.empty() && arg[0] == '@' && !read_file(arg.substr(1), text)) {
+        std::fprintf(stderr, "cannot read public key file %s\n", arg.c_str() + 1);
+        return false;
+    }
+    std::string err;
+    if (!parse_minisign_public_key(text, key, err)) {
+        std::fprintf(stderr, "bad public key: %s\n", err.c_str());
+        return false;
+    }
+    return true;
+}
+
+int cmd_verify_catalog(const std::vector<std::string>& args) {
+    std::string pubkey, site;
+    for (size_t i = 0; i < args.size(); ++i) {
+        if (args[i] == "--pubkey" && i + 1 < args.size()) pubkey = args[++i];
+        else if (site.empty() && args[i][0] != '-') site = args[i];
+        else {
+            std::fputs(kUsage, stderr);
+            return 2;
+        }
+    }
+    MinisignKey key;
+    if (pubkey.empty() || site.empty()) {
+        std::fputs(kUsage, stderr);
+        return 2;
+    }
+    if (!load_pubkey(pubkey, key)) return 2;
+
+    std::string index, sig;
+    if (!read_file(fs::path(site) / "index.json", index) || !read_file(fs::path(site) / "index.json.minisig", sig)) {
+        std::fprintf(stderr, "error: %s needs index.json and index.json.minisig\n", site.c_str());
+        return 1;
+    }
+    SignatureCheck chk = verify_minisign(key, index, sig);
+    if (!chk.ok) {
+        std::fprintf(stderr, "FAIL signature: %s\n", chk.error.c_str());
+        return 1;
+    }
+    std::printf("ok    signature valid (%s)\n", chk.trusted_comment.c_str());
+    Catalog cat;
+    Diagnostics diag;
+    if (!parse_catalog(index, cat, diag)) {
+        std::fputs(diag.format().c_str(), stderr);
+        return 1;
+    }
+    int bad = 0;
+    for (const auto& e : cat.packs) {
+        std::string text;
+        if (!read_file(fs::path(site) / e.file, text)) {
+            std::fprintf(stderr, "FAIL  %s: file %s is missing\n", e.id.c_str(), e.file.c_str());
+            ++bad;
+        } else if (text.size() != e.size || sha256_hex(text) != e.sha256) {
+            std::fprintf(stderr, "FAIL  %s: %s does not match the catalog's size/hash\n", e.id.c_str(), e.file.c_str());
+            ++bad;
+        } else {
+            std::printf("ok    %-20s r%-3d %-8s %s\n", e.id.c_str(), e.revision, e.tier.c_str(), e.file.c_str());
+        }
+    }
+    std::printf("%zu pack(s) in catalog generated %s, %d problem(s)\n", cat.packs.size(), cat.generated.c_str(), bad);
+    return bad ? 1 : 0;
+}
+
+int cmd_install(const std::vector<std::string>& args) {
+    std::string pack_id, source, cache, pubkey;
+    for (size_t i = 0; i < args.size(); ++i) {
+        if (args[i] == "--source" && i + 1 < args.size()) source = args[++i];
+        else if (args[i] == "--cache" && i + 1 < args.size()) cache = args[++i];
+        else if (args[i] == "--pubkey" && i + 1 < args.size()) pubkey = args[++i];
+        else if (pack_id.empty() && args[i][0] != '-') pack_id = args[i];
+        else {
+            std::fputs(kUsage, stderr);
+            return 2;
+        }
+    }
+    MinisignKey key;
+    if (pack_id.empty() || source.empty() || cache.empty() || pubkey.empty()) {
+        std::fputs(kUsage, stderr);
+        return 2;
+    }
+    if (!load_pubkey(pubkey, key)) return 2;
+    PackStore store(cache, key);
+    DirFetcher fetcher(source);
+    Catalog cat;
+    Diagnostics diag;
+    if (!store.refresh_catalog(fetcher, cat, diag) || !store.install(cat, pack_id, fetcher, diag)) {
+        std::fputs(diag.format().c_str(), stderr);
+        return 1;
+    }
+    for (const auto& kv : store.installed()) {
+        std::printf("installed %-20s r%d  %s\n", kv.first.c_str(), kv.second.revision, kv.second.file.c_str());
+    }
+    return 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -225,6 +332,8 @@ int main(int argc, char** argv) {
     if (cmd == "validate") return cmd_validate(rest);
     if (cmd == "eval") return cmd_eval(rest);
     if (cmd == "test") return cmd_test(rest);
+    if (cmd == "verify-catalog") return cmd_verify_catalog(rest);
+    if (cmd == "install") return cmd_install(rest);
     if (cmd == "functions") {
         for (const auto& f : builtin_function_names()) std::printf("%s\n", f.c_str());
         return 0;

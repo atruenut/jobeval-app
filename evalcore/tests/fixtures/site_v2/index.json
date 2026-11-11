@@ -1,0 +1,44 @@
+{
+  "catalog": 1,
+  "generated": "2026-11-02T00:00:00Z",
+  "packs": [
+    {
+      "id": "T-2026",
+      "kind": "country",
+      "extends": null,
+      "country": "TT",
+      "subregion": null,
+      "labels": {
+        "en": "T-2026"
+      },
+      "tier": "partial",
+      "revision": 1,
+      "valid_from": "2026-01-01",
+      "valid_to": "2026-12-31",
+      "requires_engine": ">=1.0",
+      "last_verified": "2026-11-01",
+      "file": "packs/T-2026-r1.56e1e846.json",
+      "sha256": "56e1e846bccf97f12a5681913d2b605562b9e34506f16db486f35f92043c528c",
+      "size": 570
+    },
+    {
+      "id": "T-XX-2026",
+      "kind": "subregion",
+      "extends": "T-2026",
+      "country": "TT",
+      "subregion": "XX",
+      "labels": {
+        "en": "T-XX-2026"
+      },
+      "tier": "partial",
+      "revision": 2,
+      "valid_from": "2026-01-01",
+      "valid_to": "2026-12-31",
+      "requires_engine": ">=1.0",
+      "last_verified": "2026-11-02",
+      "file": "packs/T-XX-2026-r2.b0a9908f.json",
+      "sha256": "b0a9908f50a80d5e07b2448f113bec02a509a1cc77e160fd4c6753a03eb575f5",
+      "size": 413
+    }
+  ]
+}
