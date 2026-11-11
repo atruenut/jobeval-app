@@ -501,6 +501,11 @@ static void test_catalog() {
     CHECK(d5.format().find("update the app") != std::string::npos);
 }
 
+static int rev_of(const std::map<std::string, InstallRecord>& m, const char* id) {
+    auto it = m.find(id);
+    return it == m.end() ? -1 : it->second.revision;
+}
+
 static fs::path scratch_dir(const char* name) {
     fs::path p = fs::temp_directory_path() / (std::string("jobeval-test-") + name);
     std::error_code ec;
@@ -549,12 +554,12 @@ static void test_packstore() {
         CHECK(store.refresh_catalog(f2, cat2, diag));
         CHECK_EQ(std::to_string(store.updates_available(cat2).size()), "1");
         CHECK(store.install(cat2, "T-XX-2026", f2, diag));
-        CHECK_EQ(std::to_string(store.installed().at("T-XX-2026").revision), "2");
-        CHECK_EQ(std::to_string(store.previous().at("T-XX-2026").revision), "1");
+        CHECK_EQ(std::to_string(rev_of(store.installed(), "T-XX-2026")), "2");
+        CHECK_EQ(std::to_string(rev_of(store.previous(), "T-XX-2026")), "1");
         CHECK_EQ(slot_tax(store, "T-XX-2026", "20000"), "3100");   // 700 + 2400
 
         CHECK(store.rollback("T-XX-2026", diag));
-        CHECK_EQ(std::to_string(store.installed().at("T-XX-2026").revision), "1");
+        CHECK_EQ(std::to_string(rev_of(store.installed(), "T-XX-2026")), "1");
         CHECK_EQ(slot_tax(store, "T-XX-2026", "20000"), "2700");
         CHECK(!store.rollback("T-2026", diag));  // never replaced: nothing to go back to
 
@@ -625,7 +630,10 @@ static void test_packstore() {
         Diagnostics diag;
         CHECK(store.refresh_catalog(f1, cat, diag));
         CHECK(store.install(cat, "T-2026", f1, diag));
-        const std::string file = (root / "cache_ct" / store.installed().at("T-2026").file).string();
+        auto inst = store.installed();
+        CHECK(inst.count("T-2026") == 1);
+        if (!inst.count("T-2026")) return;
+        const std::string file = (root / "cache_ct" / inst.at("T-2026").file).string();
         std::string text;
         read_whole_file(file, text);
         text[text.find("13000")] = '9';
@@ -653,6 +661,8 @@ static void test_packstore() {
 }
 
 int main() {
+    std::setvbuf(stdout, nullptr, _IONBF, 0);  // keep progress visible if a test ever crashes
+    try {
     test_decimal();
     test_json();
     test_evaluator();
@@ -663,6 +673,10 @@ int main() {
     test_minisign();
     test_catalog();
     test_packstore();
+    } catch (const std::exception& e) {
+        ++g_failures;
+        std::printf("  FAILED: uncaught exception: %s\n", e.what());
+    }
     std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);
     return g_failures;
 }
