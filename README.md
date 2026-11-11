@@ -9,21 +9,13 @@ contributions, statutory minimums, benefits) come from data packs published by
 
 ## Status
 
-Milestones 1 and 2 are in place:
+Milestones 1-3 are done: engine and rule language, signed pack catalog with an offline
+cache, and a Qt desktop app (pick a region, enter wage and hours, see take-home with a full
+breakdown and explanation). Only Canada / New Brunswick 2026 packs exist so far.
+Roadmap and log: `docs/DEVELOPMENT.md`. Design: `docs/ARCHITECTURE.md`. Contributing:
+`CONTRIBUTING.md`.
 
-- `evalcore`: GUI-free C++17 engine. Exact decimal arithmetic, the pack rule language
-  (parser, evaluator with explainable traces), pack loading with layering and validation,
-  and a golden-test runner.
-- Pack handling (M2): minisign signature verification (Ed25519 via vendored Monocypher,
-  SHA-512/SHA-256 in-house), catalog parsing, install planning along `extends` chains, and
-  `PackStore`, an offline cache that only accepts signed, hash-checked, validated packs,
-  refuses rollback to an older catalog, keeps the previous revision, and re-verifies cached
-  files on every load. It does no networking itself: callers supply a `Fetcher`.
-- `eval-cli`: `validate`, `eval`, `test`, `verify-catalog`, `install`, used by the data
-  repo's CI and by the live-catalog check here.
-
-Not built yet: HTTP fetcher and the Qt interface, workspace file, benefit and
-unemployment programs, the timeline simulator.
+**Windows download:** GitHub → Actions → latest run on `main` → artifact `JobEvaluator-windows`.
 
 ## Build
 
@@ -44,7 +36,9 @@ ctest --test-dir build --output-on-failure
 | `evalcore/cli` | `eval-cli` |
 | `evalcore/tests` | Unit tests; `fixtures/` holds signed test catalogs made by `make_fixtures.py` with a throwaway TEST key |
 | `evalcore/third_party/monocypher` | Vendored Monocypher 4.0.3 (BSD-2-Clause OR CC0-1.0) |
-| `docs/` | Design notes |
+| `app/` | Qt 6 desktop app |
+| `tools/` | `dev_site.py`: locally signed dev catalog |
+| `docs/` | ARCHITECTURE, DEVELOPMENT log |
 
 The pack format and rule language are specified in the data repo
 (`docs/PACK_SPEC.md`).

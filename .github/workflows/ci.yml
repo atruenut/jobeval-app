@@ -99,9 +99,33 @@ jobs:
         run: |
           mkdir -p dist/JobEvaluator
           cp build/app/jobeval.exe dist/JobEvaluator/
-          ls /ucrt64/bin | grep -i deployqt || true
           DEPLOY=$(ls /ucrt64/bin/windeployqt*.exe | head -n1)
           "$DEPLOY" --release --no-translations dist/JobEvaluator/jobeval.exe
+          # windeployqt under MSYS2 misses transitive DLLs (icu, pcre2, double-conversion...).
+          # Copy every non-system DLL that the exe and the deployed plugins link against,
+          # repeating until nothing new turns up.
+          cd dist/JobEvaluator
+          for pass in 1 2 3 4; do
+            for f in jobeval.exe $(find . -name '*.dll'); do
+              ldd "$f" | awk '/\/ucrt64\// {print $3}' | while read -r dll; do
+                [ -f "./$(basename "$dll")" ] || cp "$dll" .
+              done
+            done
+          done
+          ls
+      - name: Smoke test with a clean PATH (no MSYS2 on it)
+        shell: pwsh
+        run: |
+          $dir = "$PWD\dist\JobEvaluator"
+          $src = "C:\msys64\ucrt64\share\qt6\plugins\platforms\qoffscreen.dll"
+          if (-not (Test-Path $src)) { $src = (Get-ChildItem C:\msys64 -Recurse -Filter qoffscreen.dll | Select-Object -First 1).FullName }
+          Copy-Item $src "$dir\platforms\"
+          $env:PATH = "C:\Windows\System32;C:\Windows"
+          $env:QT_QPA_PLATFORM = "offscreen"
+          $p = Start-Process "$dir\jobeval.exe" -ArgumentList "--screenshot","$PWD\shot.png","--page","region" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "jobeval.exe exited with $($p.ExitCode)" }
+          if (-not (Test-Path shot.png)) { throw "no screenshot written" }
+          Remove-Item "$dir\platforms\qoffscreen.dll"
       - uses: actions/upload-artifact@v4
         with:
           name: JobEvaluator-windows
