@@ -16,7 +16,11 @@ QWidget { font-size: 10.5pt; }
 QLabel#pageTitle { font-size: 18pt; font-weight: 600; }
 QLabel#muted { color: #5f6368; }
 QLabel#error { color: #b3261e; }
-QLabel#bigNumber { font-size: 20pt; font-weight: 600; }
+QLabel#bigNumber { font-size: 17pt; font-weight: 600; }
+QLabel#sectionTitle { font-size: 12pt; font-weight: 600; margin-top: 8px; }
+QWidget#cardHot { background: #1a5fb4; border-radius: 8px; }
+QLabel#cardHotCaption { color: #d6e4f7; }
+QLabel#bigNumberHot { color: white; font-size: 19pt; font-weight: 700; }
 QWidget#card { background: #f3f5f8; border-radius: 8px; }
 QPushButton#primary { background: #1a5fb4; color: white; padding: 7px 22px; border-radius: 5px; }
 QPushButton#primary:disabled { background: #a9b7cc; }
@@ -36,6 +40,7 @@ int main(int argc, char** argv) {
     cli.addOption({"screenshot", "Developer: save a PNG of the window and exit.", "file"});
     cli.addOption({"demo", "Developer: open this pack id immediately.", "packId"});
     cli.addOption({"page", "Developer: with --screenshot, 'region' shows the region page.", "name"});
+    cli.addOption({"state", "Developer: set an input, key=value (repeatable).", "kv"});
     cli.addOption({"cache-dir", "Developer: use this cache directory.", "dir"});
     cli.process(app);
 
@@ -59,6 +64,14 @@ int main(int argc, char** argv) {
 
     const bool shot = cli.isSet("screenshot");
     if (cli.isSet("demo")) w.openRegion(cli.value("demo"));
+    if (cli.isSet("state")) {
+        QVariantMap m;
+        for (const QString& kv : cli.values("state")) {
+            const int eq = kv.indexOf('=');
+            if (eq > 0) m[kv.left(eq)] = kv.mid(eq + 1).toDouble();
+        }
+        w.applyState(m);
+    }
     if (cli.value("page") == "region") w.showRegionPage();
     w.show();
 

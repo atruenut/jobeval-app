@@ -10,6 +10,7 @@
 #include "evalcore/minisign.hpp"
 #include "evalcore/packstore.hpp"
 #include "evalcore/takehome.hpp"
+#include "evalcore/realhourly.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -733,6 +734,144 @@ static void test_take_home() {
     }
 }
 
+static const char* kOvertimePack = R"J({
+  "schema": 1, "id": "O-2026", "kind": "country", "region": {"country": "OO"},
+  "valid": {"from": "2026-01-01"}, "revision": 1, "tier": "partial", "currency": "OOO",
+  "sources": {"s": {"authority": "official", "title": "t"}},
+  "parameters": {"min_wage": {"source": "s", "value": 15}, "ot_after": {"source": "s", "value": 44}},
+  "inputs": {"gross_annual": {"type": "money"}, "wage": {"type": "money", "default": 0}},
+  "rules": [
+    {"id": "ot.rate", "expr": "max(wage, 1.5 * $min_wage)"},
+    {"id": "ot.after", "expr": "$ot_after"}
+  ],
+  "outputs": {"overtime_rate": ["ot.rate"], "overtime_threshold_hours": ["ot.after"]}
+})J";
+
+static void test_overtime() {
+    std::puts("overtime");
+    Diagnostics diag;
+    auto b = bundle_of(kOvertimePack, diag, "O-2026");
+    CHECK(b != nullptr);
+    if (!b) return;
+    TakeHomeInput in;
+    in.hourly_wage = D("20");
+    in.hours_per_week = D("50");
+    in.weeks_per_year = D("52");
+    in.as_of = "2026-06-01";
+    TakeHomeResult r;
+    std::vector<TraceEntry> trace;
+    std::string err;
+    CHECK(compute_take_home(b, in, r, trace, err));
+    // rate = max(20, 22.5) = 22.5; weekly = 20*44 + 22.5*6 = 1015; annual = 52780
+    CHECK(r.overtime_applied);
+    CHECK_EQ(r.overtime_rate.to_string(), "22.5");
+    CHECK_EQ(r.overtime_hours_per_week.to_string(), "6");
+    CHECK_EQ(r.overtime_pay_annual.to_string(), "7020");
+    CHECK_EQ(r.gross_annual.to_string(), "52780");
+
+    in.hourly_wage = D("30");  // above the floor: overtime never pays less than the wage
+    CHECK(compute_take_home(b, in, r, trace, err));
+    CHECK_EQ(r.overtime_rate.to_string(), "30");
+    CHECK_EQ(r.gross_annual.to_string(), "78000");  // 30 * 50 * 52
+
+    in.hourly_wage = D("20");
+    in.hours_per_week = D("44");  // at the threshold: no overtime
+    CHECK(compute_take_home(b, in, r, trace, err));
+    CHECK(!r.overtime_applied);
+    CHECK_EQ(r.gross_annual.to_string(), "45760");
+
+    in.hours_per_week = D("50");
+    in.use_statutory_overtime = false;  // salaried / exempt
+    CHECK(compute_take_home(b, in, r, trace, err));
+    CHECK(!r.overtime_applied);
+    CHECK_EQ(r.gross_annual.to_string(), "52000");
+}
+
+static RealHourlyInput sample_real_hourly() {
+    RealHourlyInput in;
+    in.net_annual = D("32000");
+    in.gross_annual = D("40000");
+    in.hours_per_week = D("40");
+    in.paid_weeks = D("52");
+    in.paid_vacation_weeks = D("2");
+    in.days_per_week = D("5");
+    in.unpaid_minutes_per_day = D("30");
+    in.commute_distance = D("10");
+    in.commute_minutes = D("20");
+    in.cost_per_distance = D("0.25");
+    in.work_costs_annual = D("300");
+    in.benefits_monthly_value = D("100");
+    in.pension_match_percent = D("3");
+    return in;
+}
+
+static void test_real_hourly() {
+    std::puts("real hourly");
+    RealHourlyInput in = sample_real_hourly();
+    RealHourlyResult r;
+    std::string err;
+    CHECK(compute_real_hourly(in, r, err));
+    // Independent exact arithmetic: 50 weeks worked, 250 days, commute 2*20*250/60 h, etc.
+    CHECK_EQ(r.weeks_worked.to_string(), "50");
+    CHECK_EQ(r.days_worked.to_string(), "250");
+    CHECK_EQ(r.hours_paid.to_string(), "2080");
+    CHECK_EQ(r.hours_worked.to_string(), "2000");
+    CHECK_EQ(r.commute_hours.to_fixed(6), "166.666667");
+    CHECK_EQ(r.unpaid_hours.to_string(), "125");
+    CHECK_EQ(r.total_hours.to_fixed(6), "2291.666667");
+    CHECK_EQ(r.commute_distance_total.to_string(), "5000");
+    CHECK_EQ(r.vehicle_cost.to_string(), "1250");
+    CHECK_EQ(r.commute_cost.to_string(), "1250");
+    CHECK_EQ(r.pension_match_value.to_string(), "1200");
+    CHECK_EQ(r.benefits_value.to_string(), "2400");
+    CHECK_EQ(r.value_annual.to_string(), "32850");
+    CHECK_EQ(r.take_home_per_hour_paid.to_fixed(4), "15.3846");
+    CHECK_EQ(r.take_home_per_hour_worked.to_string(), "16");
+    CHECK_EQ(r.real_hourly.to_fixed(4), "14.3345");
+    CHECK_EQ(r.hidden_cost_share.to_fixed(4), "0.0683");
+
+    // A job with no commute, no extras and no vacation: real hourly equals take-home per hour.
+    RealHourlyInput plain;
+    plain.net_annual = D("31200");
+    plain.gross_annual = D("40000");
+    plain.hours_per_week = D("40");
+    plain.paid_weeks = D("52");
+    plain.days_per_week = D("5");
+    CHECK(compute_real_hourly(plain, r, err));
+    CHECK_EQ(r.real_hourly.to_string(), "15");
+    CHECK_EQ(r.take_home_per_hour_paid.to_string(), "15");
+    CHECK_EQ(r.hidden_cost_share.to_string(), "0");
+
+    // Transit and parking are charged per day worked, not per paid day.
+    RealHourlyInput t = plain;
+    t.paid_vacation_weeks = D("4");
+    t.daily_transit_fare = D("6");
+    t.daily_parking_and_tolls = D("4");
+    CHECK(compute_real_hourly(t, r, err));
+    CHECK_EQ(r.days_worked.to_string(), "240");
+    CHECK_EQ(r.transit_cost.to_string(), "1440");
+    CHECK_EQ(r.parking_and_tolls.to_string(), "960");
+
+    // Zero hours: no division by zero.
+    RealHourlyInput z = plain;
+    z.hours_per_week = D("0");
+    CHECK(compute_real_hourly(z, r, err));
+    CHECK_EQ(r.real_hourly.to_string(), "0");
+
+    RealHourlyInput bad = plain;
+    bad.paid_vacation_weeks = D("53");
+    CHECK(!compute_real_hourly(bad, r, err));
+    bad = plain;
+    bad.commute_minutes = D("-5");
+    CHECK(!compute_real_hourly(bad, r, err));
+    bad = plain;
+    bad.days_per_week = D("8");
+    CHECK(!compute_real_hourly(bad, r, err));
+    bad = plain;
+    bad.pension_match_percent = D("101");
+    CHECK(!compute_real_hourly(bad, r, err));
+}
+
 int main() {
     std::setvbuf(stdout, nullptr, _IONBF, 0);  // keep progress visible if a test ever crashes
     try {
@@ -747,6 +886,8 @@ int main() {
     test_catalog();
     test_packstore();
     test_take_home();
+    test_overtime();
+    test_real_hourly();
     } catch (const std::exception& e) {
         ++g_failures;
         std::printf("  FAILED: uncaught exception: %s\n", e.what());

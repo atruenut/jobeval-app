@@ -22,6 +22,7 @@ add_library(evalcore STATIC
   evalcore/src/catalog.cpp
   evalcore/src/packstore.cpp
   evalcore/src/takehome.cpp
+  evalcore/src/realhourly.cpp
   evalcore/src/decimal.cpp
   evalcore/src/json.cpp
   evalcore/src/value.cpp

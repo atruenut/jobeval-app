@@ -3,7 +3,9 @@
 //
 // Standard names the app and packs agree on:
 //   inputs the app supplies : gross_annual, wage (hourly)
-//   output slots            : income_tax, contributions (employee-side deductions)
+//   output slots            : income_tax, contributions (employee-side deductions);
+//                             overtime_rate, overtime_threshold_hours (single rule each: the
+//                             legal minimum hourly rate beyond a weekly hours threshold)
 // A pack without a slot simply contributes nothing for it. Any other input a pack declares
 // is passed through from TakeHomeInput::extra, or falls back to the pack's default.
 #pragma once
@@ -23,6 +25,9 @@ struct TakeHomeInput {
     Decimal weeks_per_year;
     std::string as_of;  // YYYY-MM-DD, selects effective-dated parameters
     std::map<std::string, Value> extra;
+    // Pay hours beyond the pack's weekly threshold at the pack's overtime rate (never below the
+    // straight-time wage). Off for salaried or exempt work that earns no overtime.
+    bool use_statutory_overtime = true;
 };
 
 struct SlotLine {
@@ -33,6 +38,10 @@ struct SlotLine {
 
 struct TakeHomeResult {
     Decimal gross_annual;
+    bool overtime_applied = false;  // the pack defines overtime and hours exceed its threshold
+    Decimal overtime_hours_per_week;
+    Decimal overtime_rate;           // hourly rate used for those hours
+    Decimal overtime_pay_annual;     // pay for the overtime hours (included in gross_annual)
     Decimal income_tax;     // annual
     Decimal contributions;  // annual
     Decimal net_annual;
