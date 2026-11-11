@@ -99,7 +99,9 @@ jobs:
         run: |
           mkdir -p dist/JobEvaluator
           cp build/app/jobeval.exe dist/JobEvaluator/
-          windeployqt-qt6 --release --no-translations dist/JobEvaluator/jobeval.exe
+          ls /ucrt64/bin | grep -i deployqt || true
+          DEPLOY=$(ls /ucrt64/bin/windeployqt*.exe | head -n1)
+          "$DEPLOY" --release --no-translations dist/JobEvaluator/jobeval.exe
       - uses: actions/upload-artifact@v4
         with:
           name: JobEvaluator-windows
