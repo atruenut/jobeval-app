@@ -117,15 +117,10 @@ jobs:
         shell: pwsh
         run: |
           $dir = "$PWD\dist\JobEvaluator"
-          $src = "C:\msys64\ucrt64\share\qt6\plugins\platforms\qoffscreen.dll"
-          if (-not (Test-Path $src)) { $src = (Get-ChildItem C:\msys64 -Recurse -Filter qoffscreen.dll | Select-Object -First 1).FullName }
-          Copy-Item $src "$dir\platforms\"
           $env:PATH = "C:\Windows\System32;C:\Windows"
-          $env:QT_QPA_PLATFORM = "offscreen"
           $p = Start-Process "$dir\jobeval.exe" -ArgumentList "--screenshot","$PWD\shot.png","--page","region" -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "jobeval.exe exited with $($p.ExitCode)" }
           if (-not (Test-Path shot.png)) { throw "no screenshot written" }
-          Remove-Item "$dir\platforms\qoffscreen.dll"
       - uses: actions/upload-artifact@v4
         with:
           name: JobEvaluator-windows
