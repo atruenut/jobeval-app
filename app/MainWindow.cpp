@@ -13,7 +13,8 @@ using namespace jobeval;
 MainWindow::MainWindow(PackService* service, const QString& titleSuffix, QWidget* parent)
     : QMainWindow(parent), service_(service) {
     setWindowTitle(QString("Job Evaluator %1%2").arg(JOBEVAL_VERSION, titleSuffix));
-    resize(1020, 680);
+    resize(1180, 780);
+    setMinimumSize(980, 640);
 
     stack_ = new QStackedWidget;
     region_ = new RegionPage(service_);
@@ -38,13 +39,14 @@ MainWindow::MainWindow(PackService* service, const QString& titleSuffix, QWidget
 
     QSettings s;
     const QString last = s.value("region/last").toString();
-    evaluate_->setInputs(s.value("job/wage", 20.0).toDouble(), s.value("job/hours", 40.0).toDouble(),
-                         s.value("job/weeks", 52.0).toDouble());
+    evaluate_->setState(s.value("job/state").toMap());
     if (service_->hasCatalog() && !last.isEmpty()) {
         region_->selectPack(last);
         if (!openRegion(last)) showRegionPage();
     }
 }
+
+void MainWindow::applyState(const QVariantMap& values) { evaluate_->setState(values); }
 
 void MainWindow::showRegionPage() { stack_->setCurrentWidget(region_); }
 
@@ -84,7 +86,5 @@ bool MainWindow::openRegion(const QString& packId) {
 void MainWindow::saveSettings() const {
     QSettings s;
     if (!currentPack_.isEmpty()) s.setValue("region/last", currentPack_);
-    s.setValue("job/wage", evaluate_->wage());
-    s.setValue("job/hours", evaluate_->hours());
-    s.setValue("job/weeks", evaluate_->weeks());
+    s.setValue("job/state", evaluate_->state());
 }

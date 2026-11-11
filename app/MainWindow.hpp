@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QMainWindow>
+#include <QVariantMap>
 #include <memory>
 
 #include "evalcore/pack.hpp"
@@ -18,6 +19,7 @@ public:
     // Loads a region and shows the evaluator; false (with the reason in the region page) on failure.
     bool openRegion(const QString& packId);
     void showRegionPage();
+    void applyState(const QVariantMap& values);  // developer/testing: set input values
 
 private:
     void saveSettings() const;
