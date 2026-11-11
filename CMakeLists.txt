@@ -8,6 +8,7 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
+option(JOBEVAL_BUILD_APP "Build the Qt desktop app (needs Qt 6)" OFF)
 option(JOBEVAL_BUILD_TESTS "Build the evalcore unit tests" ON)
 
 # Vendored Monocypher (BSD-2-Clause OR CC0): Ed25519 curve arithmetic and BLAKE2b.
@@ -20,6 +21,7 @@ add_library(evalcore STATIC
   evalcore/src/minisign.cpp
   evalcore/src/catalog.cpp
   evalcore/src/packstore.cpp
+  evalcore/src/takehome.cpp
   evalcore/src/decimal.cpp
   evalcore/src/json.cpp
   evalcore/src/value.cpp
@@ -44,4 +46,8 @@ if(JOBEVAL_BUILD_TESTS)
   target_link_libraries(evalcore_tests PRIVATE evalcore)
   target_compile_definitions(evalcore_tests PRIVATE JOBEVAL_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/evalcore/tests/fixtures")
   add_test(NAME evalcore_tests COMMAND evalcore_tests)
+endif()
+
+if(JOBEVAL_BUILD_APP)
+  add_subdirectory(app)
 endif()
