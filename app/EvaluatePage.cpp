@@ -9,6 +9,7 @@
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
+#include <QLineEdit>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QScrollArea>
@@ -16,16 +17,10 @@
 #include <QVBoxLayout>
 
 #include "Format.hpp"
-#include "evalcore/realhourly.hpp"
-#include "evalcore/takehome.hpp"
 
 using namespace jobeval;
 
 namespace {
-
-Decimal dec(const QDoubleSpinBox* sb) {
-    return Decimal::parse(QString::number(sb->value(), 'f', sb->decimals()).toStdString());
-}
 
 void bigNumber(const QString& caption, QLabel*& valueOut, QHBoxLayout* row, bool highlight) {
     auto* card = new QWidget;
@@ -86,103 +81,180 @@ void fillTable(QTableWidget* t, const std::vector<Row>& rows) {
     t->setFixedHeight(h);
 }
 
+QLabel* note(const QString& text) {
+    auto* l = new QLabel(text);
+    l->setWordWrap(true);
+    l->setObjectName("muted");
+    return l;
+}
+
 }  // namespace
 
-QDoubleSpinBox* EvaluatePage::addField(QFormLayout* form, const QString& key, const QString& label, double min,
-                                       double max, int decimals, double value, const QString& suffix, const QString& tip) {
+QString EvaluatePage::suffixFor(Unit u) const {
+    const QString c = currency_.isEmpty() ? QString("money") : currency_;
+    switch (u) {
+        case Unit::Hours: return tr(" h");
+        case Unit::Weeks: return tr(" weeks");
+        case Unit::Days: return tr(" days");
+        case Unit::Minutes: return tr(" min");
+        case Unit::Percent: return tr(" %");
+        case Unit::Times: return tr(" × wage");
+        case Unit::Dist: return " " + unit_->currentText();
+        case Unit::PerHour: return " " + c + tr("/hour");
+        case Unit::PerDay: return " " + c + tr("/day");
+        case Unit::PerMonth: return " " + c + tr("/month");
+        case Unit::PerYear: return " " + c + tr("/year");
+        case Unit::PerDist: return " " + c + "/" + unit_->currentText();
+        case Unit::Money: return " " + c;
+        case Unit::Plain: break;
+    }
+    return QString();
+}
+
+EvaluatePage::Field& EvaluatePage::addField(QFormLayout* form, const QString& key, const QString& label, Unit unit, const QString& tip) {
+    const FieldSpec* spec = fieldSpec(key);
     auto* s = new QDoubleSpinBox;
-    s->setRange(min, max);
-    s->setDecimals(decimals);
-    s->setValue(value);
-    s->setSuffix(suffix);
+    s->setRange(spec->min, spec->max);
+    s->setDecimals(spec->decimals);
+    s->setValue(spec->def);
     s->setGroupSeparatorShown(true);
     s->setMinimumWidth(120);
     s->setKeyboardTracking(false);
-    if (!tip.isEmpty()) s->setToolTip(tip);
-    fields_[key] = s;
-    form->addRow(label, s);
+    s->setToolTip(tip);
+    auto* l = new QLabel(label);
+    l->setToolTip(tip);
+    form->addRow(l, s);
+    Field f;
+    f.box = s;
+    f.label = l;
+    f.unit = unit;
     connect(s, &QDoubleSpinBox::valueChanged, this, [this]() {
+        if (loading_) return;
         recalc();
-        Q_EMIT inputsChanged();
+        emitEdited();
     });
-    return s;
+    return fields_[key] = f;
 }
 
 EvaluatePage::EvaluatePage(QWidget* parent) : QWidget(parent) {
-    auto* root = new QHBoxLayout(this);
-    root->setContentsMargins(20, 16, 20, 16);
-    root->setSpacing(20);
+    auto* outer = new QVBoxLayout(this);
+    outer->setContentsMargins(20, 14, 20, 14);
 
-    // ---- left: inputs, scrollable
+    // ---- header: job name, region, notes
+    auto* head = new QHBoxLayout;
+    name_ = new QLineEdit;
+    name_->setObjectName("jobName");
+    name_->setPlaceholderText(tr("Job name"));
+    name_->setMinimumWidth(360);
+    name_->setMaximumWidth(460);
+    regionTitle_ = new QLabel;
+    regionTitle_->setObjectName("muted");
+    auto* change = new QPushButton(tr("Change region…"));
+    change->setFlat(true);
+    connect(change, &QPushButton::clicked, this, &EvaluatePage::changeRegionRequested);
+    head->addWidget(name_);
+    head->addWidget(regionTitle_);
+    head->addWidget(change);
+    head->addStretch(1);
+    outer->addLayout(head);
+
+    missing_ = new QLabel;
+    missing_->setWordWrap(true);
+    missing_->setObjectName("error");
+    missing_->hide();
+    outer->addWidget(missing_);
+
+    body_ = new QWidget;
+    auto* root = new QHBoxLayout(body_);
+    root->setContentsMargins(0, 0, 0, 0);
+    root->setSpacing(20);
+    outer->addWidget(body_, 1);
+
+    // ---- left: inputs
     auto* leftInner = new QWidget;
     auto* left = new QVBoxLayout(leftInner);
     left->setContentsMargins(0, 0, 8, 0);
-    regionTitle_ = new QLabel;
-    regionTitle_->setObjectName("pageTitle");
-    regionTitle_->setWordWrap(true);
-    auto* change = new QPushButton(tr("Change region"));
-    change->setFlat(true);
-    connect(change, &QPushButton::clicked, this, &EvaluatePage::changeRegionRequested);
-    left->addWidget(regionTitle_);
-    left->addWidget(change, 0, Qt::AlignLeft);
 
-    auto* jobBox = new QGroupBox(tr("The job"));
-    auto* job = new QFormLayout(jobBox);
-    addField(job, "wage", tr("Hourly wage"), 0, 9999.99, 2, 20.0, QString());
-    addField(job, "hours", tr("Paid hours per week"), 0, 168, 1, 40.0, tr(" h"));
-    addField(job, "weeks", tr("Paid weeks per year"), 0, 52, 0, 52, tr(" wk"));
-    addField(job, "vacation", tr("…of which paid vacation"), 0, 52, 0, 0, tr(" wk"),
-             tr("Paid weeks in which you do not work: no commute, no hours worked."));
-    addField(job, "days", tr("Days worked per week"), 0, 7, 1, 5, QString());
-    overtime_ = new QCheckBox(tr("Hours over the legal threshold earn overtime"));
-    overtime_->setChecked(true);
-    overtime_->setToolTip(tr("Uses the region's legal minimum overtime rate. Untick for salaried or exempt work."));
-    job->addRow(overtime_);
-    connect(overtime_, &QCheckBox::toggled, this, [this]() {
-        recalc();
-        Q_EMIT inputsChanged();
-    });
-    left->addWidget(jobBox);
+    auto* payBox = new QGroupBox(tr("Pay and hours"));
+    auto* payV = new QVBoxLayout(payBox);
+    payV->addWidget(note(tr("What the employer pays you, before tax.")));
+    payForm_ = new QFormLayout;
+    payV->addLayout(payForm_);
+    basis_ = new QComboBox;
+    basis_->addItems({tr("Hourly wage"), tr("Annual salary")});
+    payForm_->addRow(tr("Paid by"), basis_);
+    addField(payForm_, "pay", tr("Pay"), Unit::PerHour, tr("Your hourly wage, or your yearly salary, before tax."));
+    addField(payForm_, "hours", tr("Hours per week"), Unit::Hours, tr("Paid hours in a normal week, including overtime you usually work."));
+    addField(payForm_, "weeks", tr("Paid weeks per year"), Unit::Weeks, tr("52 for a year-round job. Fewer for seasonal or part-year work."));
+    addField(payForm_, "vacation", tr("…of which paid vacation"), Unit::Weeks, tr("Weeks you are paid but do not work. No commute, no hours worked."));
+    addField(payForm_, "daysoff", tr("Other paid days off"), Unit::Days, tr("Statutory holidays and paid sick days per year that you are paid for but do not work."));
+    addField(payForm_, "days", tr("Days worked per week"), Unit::Days, tr("Used to count commutes and trips."));
+    addField(payForm_, "bonus", tr("Bonus / commission"), Unit::PerYear, tr("Expected yearly bonus, profit share or commission. Taxed as ordinary pay."));
+    addField(payForm_, "premium", tr("Shift premium"), Unit::PerHour, tr("Extra pay per hour on evenings, nights, weekends or hazardous work."));
+    addField(payForm_, "premshare", tr("…applies to"), Unit::Percent, tr("Share of your hours the shift premium applies to."));
+    left->addWidget(payBox);
 
-    auto* goBox = new QGroupBox(tr("Getting there (one way)"));
-    auto* go = new QFormLayout(goBox);
+    otBox_ = new QGroupBox(tr("Overtime"));
+    auto* otV = new QVBoxLayout(otBox_);
+    otV->addWidget(note(tr("Hours over a weekly limit can pay more. The law sets a minimum; your employer may pay better. "
+                           "Company rates never go below the legal minimum.")));
+    otForm_ = new QFormLayout;
+    otV->addLayout(otForm_);
+    otMode_ = new QComboBox;
+    otMode_->addItems({tr("No overtime pay"), tr("Legal minimum for this region"), tr("Company policy")});
+    otForm_->addRow(tr("Overtime is paid"), otMode_);
+    addField(otForm_, "otmult", tr("Company rate"), Unit::Times, tr("Overtime hourly rate as a multiple of your wage: 1.5 for time-and-a-half, 2 for double time."));
+    otLegal_ = new QCheckBox(tr("Starts where the law's overtime starts"));
+    otForm_->addRow(otLegal_);
+    addField(otForm_, "otthr", tr("Company overtime starts after"), Unit::Hours, tr("Weekly hours after which the company overtime rate applies."));
+    left->addWidget(otBox_);
+
+    auto* goBox = new QGroupBox(tr("Getting there"));
+    auto* goV = new QVBoxLayout(goBox);
+    goV->addWidget(note(tr("One-way trip to work. Costs are counted for each day you actually work.")));
+    auto* go = new QFormLayout;
+    goV->addLayout(go);
     unit_ = new QComboBox;
     unit_->addItems({"km", "mi"});
     go->addRow(tr("Distance unit"), unit_);
-    addField(go, "distance", tr("Distance"), 0, 999, 1, 0, QString());
-    addField(go, "minutes", tr("Door-to-door time"), 0, 600, 0, 0, tr(" min"));
-    addField(go, "costper", tr("Vehicle cost per km"), 0, 99, 3, 0, QString(),
-             tr("All-in cost of driving one unit: fuel, maintenance, tyres, insurance share and depreciation. "
+    addField(go, "distance", tr("Distance one way"), Unit::Dist, QString());
+    addField(go, "minutes", tr("Door-to-door time one way"), Unit::Minutes, tr("Include walking, waiting and parking."));
+    addField(go, "costper", tr("Vehicle cost per distance"), Unit::PerDist,
+             tr("All-in cost of driving one km or mile: fuel, maintenance, tyres, insurance share and depreciation. "
                 "Tax authorities publish per-distance rates that make a reasonable guide."));
-    addField(go, "parking", tr("Parking and tolls per day"), 0, 999, 2, 0, QString());
-    addField(go, "transit", tr("Transit fare per day"), 0, 999, 2, 0, QString());
+    addField(go, "parking", tr("Parking and tolls"), Unit::PerDay, tr("Money you pay each day you drive to work."));
+    addField(go, "transit", tr("Transit fare"), Unit::PerDay, tr("Total fare for the day's trips (there and back)."));
     left->addWidget(goBox);
-    connect(unit_, &QComboBox::currentIndexChanged, this, [this]() {
-        updateUnitLabels();
-        Q_EMIT inputsChanged();
-    });
 
-    auto* extraCostBox = new QGroupBox(tr("Benefits and costs"));
-    auto* ec = new QFormLayout(extraCostBox);
-    addField(ec, "benefits", tr("Employer benefits, per month"), 0, 99999, 2, 0, QString(),
-             tr("Cash value of employer-paid health, dental, insurance and similar."));
-    addField(ec, "pension", tr("Pension / RRSP match"), 0, 100, 1, 0, tr(" %"), tr("Employer contribution as a percent of gross pay."));
-    addField(ec, "otherben", tr("Other benefits, per year"), 0, 9999999, 0, 0, QString());
-    addField(ec, "workcosts", tr("Work costs you pay, per year"), 0, 9999999, 0, 0, QString(),
-             tr("Uniforms, tools, phone, licences and similar."));
-    addField(ec, "unpaid", tr("Unpaid time per day"), 0, 600, 0, 0, tr(" min"), tr("Unpaid breaks, changing, waiting."));
-    left->addWidget(extraCostBox);
+    auto* costBox = new QGroupBox(tr("Benefits and costs"));
+    auto* costV = new QVBoxLayout(costBox);
+    costV->addWidget(note(tr("Things that make the job worth more or less than the paycheque alone. Enter what each would cost "
+                             "you if you had to buy it yourself.")));
+    auto* ec = new QFormLayout;
+    costV->addLayout(ec);
+    addField(ec, "benefits", tr("Employer-paid benefits"), Unit::PerMonth, tr("Value of health, dental, life and disability cover the employer pays for."));
+    addField(ec, "premiums", tr("Your benefit premiums and dues"), Unit::PerMonth, tr("Your share of premiums, union dues and similar deductions."));
+    addField(ec, "pension", tr("Pension / RRSP match"), Unit::Percent, tr("Employer pension contribution as a percent of your gross pay."));
+    addField(ec, "otherben", tr("Other benefits"), Unit::PerYear, tr("Anything else with a cash value: tuition, phone, meals, discounts, stock purchase match."));
+    addField(ec, "workcosts", tr("Work costs you pay"), Unit::PerYear, tr("Uniforms, tools, phone, licences and similar."));
+    addField(ec, "unpaid", tr("Unpaid time at work"), Unit::Minutes, tr("Per day: unpaid breaks, changing, waiting for shifts. Counted as time the job takes."));
+    left->addWidget(costBox);
 
     extraBox_ = new QGroupBox(tr("Region-specific"));
     extraForm_ = new QFormLayout(extraBox_);
     extraBox_->hide();
     left->addWidget(extraBox_);
 
-    auto* dateBox = new QGroupBox(tr("Rules"));
+    auto* dateBox = new QGroupBox(tr("Rules and notes"));
     auto* dform = new QFormLayout(dateBox);
     asOf_ = new QDateEdit(QDate::currentDate());
     asOf_->setCalendarPopup(true);
+    asOf_->setToolTip(tr("Tax and wage rules change by date. Pick the date the job would start paying you."));
     dform->addRow(tr("Rules as of"), asOf_);
+    notes_ = new QPlainTextEdit;
+    notes_->setPlaceholderText(tr("Notes about this job"));
+    notes_->setFixedHeight(70);
+    dform->addRow(notes_);
     left->addWidget(dateBox);
     left->addStretch(1);
 
@@ -191,10 +263,10 @@ EvaluatePage::EvaluatePage(QWidget* parent) : QWidget(parent) {
     scroll->setWidgetResizable(true);
     scroll->setFrameShape(QFrame::NoFrame);
     scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    scroll->setFixedWidth(350);
+    scroll->setFixedWidth(450);
     root->addWidget(scroll);
 
-    // ---- right: results, scrollable
+    // ---- right: results
     auto* rightInner = new QWidget;
     auto* right = new QVBoxLayout(rightInner);
     right->setContentsMargins(0, 0, 8, 0);
@@ -203,12 +275,8 @@ EvaluatePage::EvaluatePage(QWidget* parent) : QWidget(parent) {
     bigNumber(tr("Take-home per month"), monthly_, cards, false);
     bigNumber(tr("Per paid hour, after tax"), hourlyAfterTax_, cards, false);
     right->addLayout(cards);
-
-    verdict_ = new QLabel;
-    verdict_->setWordWrap(true);
-    verdict_->setObjectName("muted");
+    verdict_ = note(QString());
     right->addWidget(verdict_);
-
     error_ = new QLabel;
     error_->setObjectName("error");
     error_->setWordWrap(true);
@@ -220,16 +288,12 @@ EvaluatePage::EvaluatePage(QWidget* parent) : QWidget(parent) {
     right->addWidget(h1);
     money_ = makeTable({tr("Item"), tr("Per year"), tr("Per month")});
     right->addWidget(money_);
-
     auto* h2 = new QLabel(tr("Your time, per year"));
     h2->setObjectName("sectionTitle");
     right->addWidget(h2);
     time_ = makeTable({tr("Item"), tr("Hours"), tr("Per week")});
     right->addWidget(time_);
-
-    coverage_ = new QLabel;
-    coverage_->setWordWrap(true);
-    coverage_->setObjectName("muted");
+    coverage_ = note(QString());
     right->addWidget(coverage_);
 
     auto* explainBox = new QGroupBox(tr("How the tax was calculated"));
@@ -251,46 +315,109 @@ EvaluatePage::EvaluatePage(QWidget* parent) : QWidget(parent) {
     rscroll->setWidgetResizable(true);
     rscroll->setFrameShape(QFrame::NoFrame);
     rscroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    rscroll->setMinimumWidth(560);
+    rscroll->setMinimumWidth(500);
     root->addWidget(rscroll, 1);
 
-    connect(asOf_, &QDateEdit::dateChanged, this, [this]() { recalc(); });
-    updateUnitLabels();
-}
-
-void EvaluatePage::updateUnitLabels() {
-    const QString u = unit_->currentText();
-    for (auto* w : findChildren<QFormLayout*>()) {
-        if (auto* lbl = qobject_cast<QLabel*>(w->labelForField(fields_["costper"]))) lbl->setText(tr("Vehicle cost per %1").arg(u));
-        if (auto* lbl = qobject_cast<QLabel*>(w->labelForField(fields_["distance"]))) lbl->setText(tr("Distance (%1)").arg(u));
+    for (QComboBox* c : {basis_, otMode_, unit_}) {
+        c->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+        c->setMinimumContentsLength(12);
     }
-    recalc();
+    auto changed = [this]() {
+        if (loading_) return;
+        applyUnits();
+        updateVisibility();
+        recalc();
+        emitEdited();
+    };
+    connect(basis_, &QComboBox::currentIndexChanged, this, changed);
+    connect(otMode_, &QComboBox::currentIndexChanged, this, changed);
+    connect(otLegal_, &QCheckBox::toggled, this, changed);
+    connect(unit_, &QComboBox::currentIndexChanged, this, changed);
+    connect(asOf_, &QDateEdit::dateChanged, this, changed);
+    connect(name_, &QLineEdit::textEdited, this, [this]() { emitEdited(); });
+    connect(notes_, &QPlainTextEdit::textChanged, this, [this]() { if (!loading_) emitEdited(); });
+    applyUnits();
+    updateVisibility();
 }
 
-QVariantMap EvaluatePage::state() const {
+void EvaluatePage::applyUnits() {
+    for (auto it = fields_.begin(); it != fields_.end(); ++it) it->box->setSuffix(suffixFor(it->unit));
+    const bool salary = basis_->currentIndex() == 1;
+    fields_["pay"].box->setSuffix(salary ? suffixFor(Unit::PerYear) : suffixFor(Unit::PerHour));
+    if (auto* l = qobject_cast<QLabel*>(fields_["pay"].label)) l->setText(salary ? tr("Annual salary") : tr("Hourly wage"));
+}
+
+void EvaluatePage::updateVisibility() {
+    const bool salary = basis_->currentIndex() == 1;
+    otBox_->setVisible(!salary);
+    const bool company = otMode_->currentIndex() == 2;
+    const bool hasLegal = bundle_ && bundle_->slots.count("overtime_rate") && bundle_->slots.count("overtime_threshold_hours");
+    for (const char* k : {"otmult"}) {
+        fields_[k].box->setVisible(company);
+        fields_[k].label->setVisible(company);
+    }
+    otLegal_->setVisible(company && hasLegal);
+    const bool showThr = company && (!hasLegal || !otLegal_->isChecked());
+    fields_["otthr"].box->setVisible(showThr);
+    fields_["otthr"].label->setVisible(showThr);
+    const bool noLegalNote = !hasLegal;
+    otMode_->setItemText(1, noLegalNote ? tr("Legal minimum (this region has none)") : tr("Legal minimum for this region"));
+}
+
+QVariantMap EvaluatePage::collectState() const {
     QVariantMap m;
-    for (auto it = fields_.begin(); it != fields_.end(); ++it) m[it.key()] = it.value()->value();
-    m["overtime"] = overtime_->isChecked();
+    for (auto it = fields_.begin(); it != fields_.end(); ++it) m[it.key()] = it->box->value();
+    m["basis"] = basis_->currentIndex();
+    m["otmode"] = otMode_->currentIndex();
+    m["otlegal"] = otLegal_->isChecked() ? 1 : 0;
     m["unit"] = unit_->currentIndex();
+    m["asof"] = asOf_->date().toString(Qt::ISODate);
+    for (auto it = extras_.begin(); it != extras_.end(); ++it) m["x." + it.key()] = it.value()->value();
     return m;
 }
 
-void EvaluatePage::setState(const QVariantMap& values) {
-    for (auto it = fields_.begin(); it != fields_.end(); ++it) it.value()->blockSignals(true);
-    for (auto it = values.begin(); it != values.end(); ++it) {
-        if (fields_.contains(it.key())) fields_[it.key()]->setValue(it.value().toDouble());
-    }
-    for (auto it = fields_.begin(); it != fields_.end(); ++it) it.value()->blockSignals(false);
-    if (values.contains("overtime")) overtime_->setChecked(values["overtime"].toBool());
-    if (values.contains("unit")) unit_->setCurrentIndex(values["unit"].toInt());
-    updateUnitLabels();
+void EvaluatePage::emitEdited() {
+    if (loading_) return;
+    Q_EMIT jobEdited(name_->text(), notes_->toPlainText(), collectState());
 }
 
-void EvaluatePage::setRegion(const std::shared_ptr<const Bundle>& bundle, const CatalogEntry* entry, const QString& title) {
+void EvaluatePage::setJobName(const QString& name) {
+    if (name_->text() != name) name_->setText(name);
+}
+
+void EvaluatePage::setJob(const Job& job, const std::shared_ptr<const Bundle>& bundle, const CatalogEntry* entry,
+                          const QString& regionTitle) {
+    loading_ = true;
     bundle_ = bundle;
-    regionTitle_->setText(title);
-    const bool hasOvertime = bundle->slots.count("overtime_rate") && bundle->slots.count("overtime_threshold_hours");
-    overtime_->setVisible(hasOvertime);
+    currency_ = bundle ? QString::fromStdString(bundle->currency) : QString();
+    const QVariantMap st = normalizedState(job.state);
+    name_->setText(job.name);
+    notes_->setPlainText(job.notes);
+    regionTitle_->setText(regionTitle);
+    for (auto it = fields_.begin(); it != fields_.end(); ++it) it->box->setValue(st[it.key()].toDouble());
+    basis_->setCurrentIndex(st["basis"].toInt());
+    otMode_->setCurrentIndex(st["otmode"].toInt());
+    otLegal_->setChecked(st["otlegal"].toInt() != 0);
+    unit_->setCurrentIndex(st["unit"].toInt());
+    asOf_->setDate(QDate::fromString(st["asof"].toString(), Qt::ISODate));
+
+    body_->setEnabled(bundle != nullptr);
+    missing_->setVisible(bundle == nullptr);
+    if (!bundle) {
+        missing_->setText(tr("The rules for this job's region (%1) are not downloaded on this computer. "
+                             "Use “Change region…” to download them.").arg(job.packId));
+        loading_ = false;
+        applyUnits();
+        updateVisibility();
+        error_->hide();
+        for (auto* l : {realHourly_, monthly_, hourlyAfterTax_}) l->setText("–");
+        verdict_->clear();
+        money_->setRowCount(0);
+        time_->setRowCount(0);
+        coverage_->clear();
+        explain_->clear();
+        return;
+    }
 
     const QString tier = entry ? QString::fromStdString(entry->tier) : QString::fromStdString(bundle->tier);
     QString cov = tier == "full" ? tr("Full coverage.") : tier == "partial" ? tr("Partial coverage.") : tr("Rough estimate.");
@@ -308,7 +435,15 @@ void EvaluatePage::setRegion(const std::shared_ptr<const Bundle>& bundle, const 
     cov += " " + tr("Tax is computed as if this were your only income for a full year. These are estimates for "
                     "comparing jobs, not payroll-grade figures.");
     coverage_->setText(cov);
+
     buildExtraInputs();
+    for (auto it = extras_.begin(); it != extras_.end(); ++it) {
+        const QString key = "x." + it.key();
+        if (st.contains(key)) it.value()->setValue(st[key].toDouble());
+    }
+    loading_ = false;
+    applyUnits();
+    updateVisibility();
     recalc();
 }
 
@@ -327,63 +462,38 @@ void EvaluatePage::buildExtraInputs() {
         s->setGroupSeparatorShown(true);
         extras_[name] = s;
         extraForm_->addRow(QString::fromStdString(in.label.empty() ? in.name : in.label), s);
-        connect(s, &QDoubleSpinBox::valueChanged, this, [this]() { recalc(); });
+        connect(s, &QDoubleSpinBox::valueChanged, this, [this]() {
+            if (loading_) return;
+            recalc();
+            emitEdited();
+        });
     }
     extraBox_->setVisible(!extras_.isEmpty());
 }
 
 void EvaluatePage::recalc() {
-    if (!bundle_ || fields_.isEmpty() || !fields_.contains("unpaid")) return;
-    auto f = [this](const char* k) { return dec(fields_[k]); };
-
-    TakeHomeInput in;
-    in.hourly_wage = f("wage");
-    in.hours_per_week = f("hours");
-    in.weeks_per_year = f("weeks");
-    in.use_statutory_overtime = overtime_->isChecked();
-    in.as_of = asOf_->date().toString(Qt::ISODate).toStdString();
-    for (auto it = extras_.begin(); it != extras_.end(); ++it) in.extra[it.key().toStdString()] = Value::num(dec(it.value()));
-
-    TakeHomeResult r;
+    if (!bundle_ || loading_) return;
+    const JobInputs in = inputsFromState(collectState());
+    JobOutcome o;
     std::vector<TraceEntry> trace;
     std::string err;
-    auto fail = [this](const QString& msg) {
-        error_->setText(tr("Cannot calculate for these inputs: %1").arg(msg));
+    if (!evaluate_job(bundle_, in, o, trace, err)) {
+        error_->setText(tr("Cannot calculate for these inputs: %1").arg(QString::fromStdString(err)));
         error_->show();
         for (auto* l : {realHourly_, monthly_, hourlyAfterTax_}) l->setText("–");
         verdict_->clear();
         money_->setRowCount(0);
         time_->setRowCount(0);
         explain_->clear();
-    };
-    if (!compute_take_home(bundle_, in, r, trace, err)) return fail(QString::fromStdString(err));
-
-    RealHourlyInput rh;
-    rh.net_annual = r.net_annual;
-    rh.gross_annual = r.gross_annual;
-    rh.hours_per_week = in.hours_per_week;
-    rh.paid_weeks = in.weeks_per_year;
-    rh.paid_vacation_weeks = f("vacation");
-    rh.days_per_week = f("days");
-    rh.unpaid_minutes_per_day = f("unpaid");
-    rh.commute_distance = f("distance");
-    rh.commute_minutes = f("minutes");
-    rh.cost_per_distance = f("costper");
-    rh.daily_parking_and_tolls = f("parking");
-    rh.daily_transit_fare = f("transit");
-    rh.work_costs_annual = f("workcosts");
-    rh.benefits_monthly_value = f("benefits");
-    rh.pension_match_percent = f("pension");
-    rh.other_benefits_annual = f("otherben");
-    RealHourlyResult h;
-    if (!compute_real_hourly(rh, h, err)) return fail(QString::fromStdString(err));
-
+        return;
+    }
     error_->hide();
+    const TakeHomeResult& r = o.take_home;
+    const RealHourlyResult& h = o.real;
     const std::string& cur = bundle_->currency;
     auto money = [&](const Decimal& d) { return formatMoney(d, cur); };
     auto num = [](const Decimal& d) { return formatNumber(d); };
     const Decimal twelve = Decimal::from_int(12);
-    const Decimal weeks = in.weeks_per_year;
 
     realHourly_->setText(h.total_hours.is_zero() ? QString("–") : money(h.real_hourly));
     monthly_->setText(money(r.net_monthly));
@@ -393,18 +503,21 @@ void EvaluatePage::recalc() {
     } else {
         const double pct = h.hidden_cost_share.to_double() * 100.0;
         if (pct > 0.5)
-            verdict_->setText(tr("Commuting, unpaid time and work costs take about %1% off the after-tax hourly figure.").arg(pct, 0, 'f', 0));
+            verdict_->setText(tr("Commuting, unpaid time and costs take about %1% off the after-tax hourly figure.").arg(pct, 0, 'f', 0));
         else if (pct < -0.5)
-            verdict_->setText(tr("Benefits and paid vacation lift the real hourly figure about %1% above the after-tax rate.").arg(-pct, 0, 'f', 0));
+            verdict_->setText(tr("Benefits and paid time off lift the real hourly figure about %1% above the after-tax rate.").arg(-pct, 0, 'f', 0));
         else
             verdict_->setText(tr("Extras and costs roughly cancel out."));
     }
 
     std::vector<Row> rows;
-    rows.push_back({tr("Gross pay"), num(r.gross_annual), num(r.gross_annual / twelve), true, 0});
+    const bool salary = in.basis == PayBasis::Salary;
+    rows.push_back({salary ? tr("Salary") : tr("Gross pay"), num(r.gross_annual), num(r.gross_annual / twelve), true, 0});
     if (r.overtime_applied)
-        rows.push_back({tr("including overtime (%1 h/week at %2)").arg(num(r.overtime_hours_per_week), money(r.overtime_rate)),
+        rows.push_back({tr("including overtime (%1 h/week, average %2/h)").arg(num(r.overtime_hours_per_week), money(r.overtime_rate)),
                         num(r.overtime_pay_annual), num(r.overtime_pay_annual / twelve), false, 1});
+    if (!r.other_pay_annual.is_zero())
+        rows.push_back({tr("including bonus and premiums"), num(r.other_pay_annual), num(r.other_pay_annual / twelve), false, 1});
     if (!r.income_tax_lines.empty()) {
         rows.push_back({tr("Income tax"), num(-r.income_tax), num(-r.income_tax / twelve), false, 0});
         for (const auto& l : r.income_tax_lines)
@@ -419,9 +532,11 @@ void EvaluatePage::recalc() {
     if (!h.benefits_value.is_zero()) rows.push_back({tr("Employer benefits"), num(h.benefits_value), num(h.benefits_value / twelve), false, 0});
     if (!h.commute_cost.is_zero()) rows.push_back({tr("Commuting costs"), num(-h.commute_cost), num(-h.commute_cost / twelve), false, 0});
     if (!h.work_costs.is_zero()) rows.push_back({tr("Work costs"), num(-h.work_costs), num(-h.work_costs / twelve), false, 0});
+    if (!h.benefit_premiums.is_zero()) rows.push_back({tr("Your premiums and dues"), num(-h.benefit_premiums), num(-h.benefit_premiums / twelve), false, 0});
     rows.push_back({tr("Net value of the job"), num(h.value_annual), num(h.value_annual / twelve), true, 0});
     fillTable(money_, rows);
 
+    const Decimal weeks = in.paid_weeks;
     auto perWeek = [&](const Decimal& hours) { return weeks.is_zero() ? QString("–") : num(hours / weeks); };
     std::vector<Row> trows;
     trows.push_back({tr("Hours worked"), num(h.hours_worked), perWeek(h.hours_worked), false, 0});

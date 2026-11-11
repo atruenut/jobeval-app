@@ -11,6 +11,7 @@
 #include "evalcore/packstore.hpp"
 #include "evalcore/takehome.hpp"
 #include "evalcore/realhourly.hpp"
+#include "evalcore/jobcalc.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -872,6 +873,104 @@ static void test_real_hourly() {
     CHECK(!compute_real_hourly(bad, r, err));
 }
 
+static JobInputs job_base() {
+    JobInputs j;
+    j.pay = D("20");
+    j.hours_per_week = D("40");
+    j.paid_weeks = D("52");
+    j.days_per_week = D("5");
+    j.as_of = "2026-06-01";
+    return j;
+}
+
+static void test_jobcalc() {
+    std::puts("job calc");
+    Diagnostics diag;
+    auto b = bundle_of(kOvertimePack, diag, "O-2026");  // legal: after 44 h at max(wage, 22.5); no taxes
+    CHECK(b != nullptr);
+    if (!b) return;
+    JobOutcome o;
+    std::vector<TraceEntry> trace;
+    std::string err;
+
+    JobInputs j = job_base();
+    j.hours_per_week = D("50");
+    j.overtime = OvertimeMode::Legal;
+    CHECK(evaluate_job(b, j, o, trace, err));
+    CHECK_EQ(o.take_home.gross_annual.to_string(), "52780");
+
+    j.overtime = OvertimeMode::None;
+    CHECK(evaluate_job(b, j, o, trace, err));
+    CHECK_EQ(o.take_home.gross_annual.to_string(), "52000");
+
+    // Company pays double time, starting where the law does: 20*44 + 40*6 = 1120 a week.
+    j.overtime = OvertimeMode::Company;
+    j.company_multiplier = D("2");
+    j.use_legal_threshold = true;
+    CHECK(evaluate_job(b, j, o, trace, err));
+    CHECK_EQ(o.take_home.gross_annual.to_string(), "58240");
+    CHECK_EQ(o.take_home.overtime_pay_annual.to_string(), "12480");
+    CHECK_EQ(o.take_home.overtime_rate.to_string(), "40");
+
+    // Company time-and-a-half from 40 h: 20*40 + 30*10 = 1100 a week (30 beats the legal 22.5).
+    j.company_multiplier = D("1.5");
+    j.use_legal_threshold = false;
+    j.company_threshold_hours = D("40");
+    CHECK(evaluate_job(b, j, o, trace, err));
+    CHECK_EQ(o.take_home.gross_annual.to_string(), "57200");
+    CHECK_EQ(o.take_home.overtime_hours_per_week.to_string(), "10");
+
+    // A weak company rate cannot undercut the law: 20*40 + 22*4 + 22.5*6 = 1023 a week.
+    j.company_multiplier = D("1.1");
+    CHECK(evaluate_job(b, j, o, trace, err));
+    CHECK_EQ(o.take_home.gross_annual.to_string(), "53196");
+
+    // Salary is flat whatever the hours; the hourly equivalent is derived.
+    JobInputs sal = job_base();
+    sal.basis = PayBasis::Salary;
+    sal.pay = D("52000");
+    sal.hours_per_week = D("50");
+    CHECK(evaluate_job(b, sal, o, trace, err));
+    CHECK_EQ(o.take_home.gross_annual.to_string(), "52000");
+    CHECK_EQ(o.hourly_wage.to_string(), "20");
+    CHECK(!o.take_home.overtime_applied);
+
+    // Bonus and shift premium are taxable extras: 41600 + 2000 + 2 * 25% * 2080.
+    JobInputs ex = job_base();
+    ex.bonus_annual = D("2000");
+    ex.shift_premium_per_hour = D("2");
+    ex.shift_premium_percent = D("25");
+    CHECK(evaluate_job(b, ex, o, trace, err));
+    CHECK_EQ(o.take_home.gross_annual.to_string(), "44640");
+
+    JobInputs bad = job_base();
+    bad.shift_premium_percent = D("120");
+    CHECK(!evaluate_job(b, bad, o, trace, err));
+    bad = job_base();
+    bad.bonus_annual = D("-1");
+    CHECK(!evaluate_job(b, bad, o, trace, err));
+
+    // Paid days off and premiums feed the real-hourly figure: 10 holidays are paid but not
+    // worked (2000 h worked of 2080 paid), and 50 a month of premiums is a 600 a year cost.
+    RealHourlyInput rh;
+    rh.net_annual = D("31200");
+    rh.gross_annual = D("41600");
+    rh.hours_per_week = D("40");
+    rh.paid_weeks = D("52");
+    rh.days_per_week = D("5");
+    rh.paid_days_off = D("10");
+    rh.benefit_premiums_monthly = D("50");
+    RealHourlyResult rr;
+    CHECK(compute_real_hourly(rh, rr, err));
+    CHECK_EQ(rr.days_worked.to_string(), "250");
+    CHECK_EQ(rr.hours_worked.to_string(), "2000");
+    CHECK_EQ(rr.benefit_premiums.to_string(), "600");
+    CHECK_EQ(rr.value_annual.to_string(), "30600");
+    CHECK_EQ(rr.real_hourly.to_fixed(4), "15.3000");
+    rh.paid_days_off = D("300");
+    CHECK(!compute_real_hourly(rh, rr, err));
+}
+
 int main() {
     std::setvbuf(stdout, nullptr, _IONBF, 0);  // keep progress visible if a test ever crashes
     try {
@@ -888,6 +987,7 @@ int main() {
     test_take_home();
     test_overtime();
     test_real_hourly();
+    test_jobcalc();
     } catch (const std::exception& e) {
         ++g_failures;
         std::printf("  FAILED: uncaught exception: %s\n", e.what());

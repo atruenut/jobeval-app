@@ -8,13 +8,25 @@ Newest first. Keep this current: one entry per merged milestone or notable decis
 - [x] M2 signed catalog, pack store
 - [x] M3 desktop app: region picker, take-home evaluator, Windows zip
 - [x] M4 real hourly: commute time/distance, vehicle costs, unpaid time, benefits value, statutory overtime
-- [ ] M5 comparison of opportunities (saved jobs, side by side, verdicts)
+- [x] M5 projects: several jobs per project, side-by-side comparison, save/open/autosave, import/export of selected jobs, company overtime and more pay types
+- [ ] M5b comparison polish: charts, sorting, "what wage would make job A equal job B"
 - [ ] M6 not-working modes: unemployment programs, student, savings runway
 - [ ] M7 pack expansion: other provinces, US, UK, 2027 draft pack; official CRA PDOC runs
 - [ ] Installer / code signing, auto-update of the app itself, key-rotation plan
 - [ ] Decide data licence (MIT now; CC BY 4.0 suggested)
 
 ## Log
+
+### 2026-11-11 (later) — M5 projects, company policy, units
+- Engine: `jobcalc` evaluates a whole job. Overtime now has tiers: the region's legal
+  minimum plus optional company policy (any multiplier, own threshold); each hour earns the
+  highest applicable rate and never below the legal one. Added salary basis, bonus, shift
+  premium, paid days off, benefit premiums. 324 engine checks, hand-computed expectations.
+- App: project = list of jobs, each with its own region; compare view ranks by real hourly
+  within a currency only; jobs list; autosave and restore; File menu (new/open/recent/save/
+  import/export); `docs/FILE_FORMAT.md`; `jobmodel_test` (Qt Test) covers the file format.
+- Every field now shows its unit (CAD/day, CAD/month, h, %, km...) plus a tooltip, and each
+  group has a plain-language description.
 
 ### 2026-11-11 — M4 real hourly; tax audit
 - Audited the CA/NB tax maths against CRA T4127 (2026). Brackets, BPA, CPP, CPP2 and EI were
