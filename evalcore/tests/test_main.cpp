@@ -9,6 +9,7 @@
 #include "evalcore/hash.hpp"
 #include "evalcore/minisign.hpp"
 #include "evalcore/packstore.hpp"
+#include "evalcore/takehome.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -660,6 +661,78 @@ static void test_packstore() {
     fs::remove_all(root, ec);
 }
 
+static const char* kTakeHomePack = R"J({
+  "schema": 1, "id": "H-2026", "kind": "country", "region": {"country": "HH"},
+  "valid": {"from": "2026-01-01"}, "revision": 1, "tier": "partial", "currency": "HHH",
+  "sources": {"s": {"authority": "official", "title": "t"}},
+  "parameters": {
+    "tax": {"source": "s", "value": [{"up_to": 10000, "rate": 0}, {"rate": 0.2}]},
+    "cpp": {"source": "s", "value": {"rate": 0.05, "cap": 3000}},
+    "region_factor": {"source": "s", "value": 1}
+  },
+  "inputs": {"gross_annual": {"type": "money"}, "wage": {"type": "money", "default": 0},
+             "union_dues": {"type": "money", "default": 100, "label": "Union dues"}},
+  "rules": [
+    {"id": "income.tax", "label": {"en": "Income tax"}, "expr": "bracket(gross_annual, $tax)"},
+    {"id": "pension", "label": {"en": "Pension"}, "expr": "min(gross_annual * $cpp.rate, $cpp.cap)"},
+    {"id": "dues", "label": {"en": "Union dues"}, "expr": "union_dues"}
+  ],
+  "outputs": {"income_tax": ["income.tax"], "contributions": ["pension", "dues"]}
+})J";
+
+static void test_take_home() {
+    std::puts("take-home");
+    Diagnostics diag;
+    auto b = bundle_of(kTakeHomePack, diag, "H-2026");
+    CHECK(b != nullptr);
+    if (!b) return;
+    TakeHomeInput in;
+    in.hourly_wage = D("20");
+    in.hours_per_week = D("40");
+    in.weeks_per_year = D("50");  // 40000 gross
+    in.as_of = "2026-06-01";
+    TakeHomeResult r;
+    std::vector<TraceEntry> trace;
+    std::string err;
+    CHECK(compute_take_home(b, in, r, trace, err));
+    CHECK_EQ(r.gross_annual.to_string(), "40000");
+    CHECK_EQ(r.income_tax.to_string(), "6000");        // (40000-10000) * 0.2
+    CHECK_EQ(r.contributions.to_string(), "2100");     // pension capped at the pack maximum 40000*0.05=2000, + dues 100
+    CHECK_EQ(r.net_annual.to_string(), "31900");
+    CHECK_EQ(r.net_monthly.to_fixed(2), "2658.33");
+    CHECK_EQ(r.hours_per_year.to_string(), "2000");
+    CHECK_EQ(r.net_hourly.to_string(), "15.95");
+    CHECK(r.contribution_lines.size() == 2 && r.contribution_lines[0].label == "Pension");
+    CHECK(!trace.empty());
+
+    in.extra["union_dues"] = N("0");  // a pack-declared input can be overridden
+    CHECK(compute_take_home(b, in, r, trace, err));
+    CHECK_EQ(r.contributions.to_string(), "2000");
+
+    in.hours_per_week = D("0");  // no hours: no division by zero, hourly figure is zero
+    CHECK(compute_take_home(b, in, r, trace, err));
+    CHECK_EQ(r.net_hourly.to_string(), "0");
+    CHECK_EQ(r.gross_annual.to_string(), "0");
+
+    in.hourly_wage = D("-1");
+    CHECK(!compute_take_home(b, in, r, trace, err));
+    CHECK(err.find("negative") != std::string::npos);
+
+    // A pack with no slots at all is a valid (if empty) region: take-home equals gross.
+    const char* bare = R"J({"schema":1,"id":"E-1","kind":"country","region":{"country":"EE"},"valid":{"from":"2026-01-01"},"revision":1,"tier":"estimate","currency":"EEE"})J";
+    Diagnostics d2;
+    auto b2 = bundle_of(bare, d2, "E-1");
+    CHECK(b2 != nullptr);
+    if (b2) {
+        TakeHomeInput in2;
+        in2.hourly_wage = D("10");
+        in2.hours_per_week = D("10");
+        in2.weeks_per_year = D("52");
+        CHECK(compute_take_home(b2, in2, r, trace, err));
+        CHECK_EQ(r.net_annual.to_string(), "5200");
+    }
+}
+
 int main() {
     std::setvbuf(stdout, nullptr, _IONBF, 0);  // keep progress visible if a test ever crashes
     try {
@@ -673,6 +746,7 @@ int main() {
     test_minisign();
     test_catalog();
     test_packstore();
+    test_take_home();
     } catch (const std::exception& e) {
         ++g_failures;
         std::printf("  FAILED: uncaught exception: %s\n", e.what());

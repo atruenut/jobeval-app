@@ -55,6 +55,58 @@ jobs:
           name: eval-cli-windows
           path: build/eval-cli.exe
 
+  # The Qt desktop app: Linux build (headless smoke test) and a Windows build packaged as a
+  # self-contained zip that can be downloaded from the run's artifacts.
+  app-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt
+        run: sudo apt-get update && sudo apt-get install -y qt6-base-dev
+      - name: Build
+        run: |
+          cmake -S . -B build -DJOBEVAL_BUILD_APP=ON -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j
+      - name: Smoke test (offscreen)
+        run: QT_QPA_PLATFORM=offscreen ./build/app/jobeval --screenshot /tmp/shot.png --page region
+      - uses: actions/upload-artifact@v4
+        with:
+          name: region-screenshot
+          path: /tmp/shot.png
+
+  app-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: false
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-qt6-base
+            mingw-w64-ucrt-x86_64-qt6-tools
+      - name: Build
+        run: |
+          cmake -S . -B build -G Ninja -DJOBEVAL_BUILD_APP=ON -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j
+      - name: Package
+        run: |
+          mkdir -p dist/JobEvaluator
+          cp build/app/jobeval.exe dist/JobEvaluator/
+          ls /ucrt64/bin | grep -i deployqt || true
+          DEPLOY=$(ls /ucrt64/bin/windeployqt*.exe | head -n1)
+          "$DEPLOY" --release --no-translations dist/JobEvaluator/jobeval.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: JobEvaluator-windows
+          path: dist/JobEvaluator
+
   # Verifies the REAL published catalog with the app's own verifier: signature made by
   # actual minisign, hashes of every pack, then installs a pack into a fresh cache and
   # evaluates it. Catches any format drift between the data repo and this engine.

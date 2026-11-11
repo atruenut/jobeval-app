@@ -1,7 +1,9 @@
-build/
-build-*/
-dist/
 *.user
-CMakeLists.txt.user
-.vscode/
 .idea/
+.vscode/
+CMakeLists.txt.user
+__pycache__/
+build*/
+build-*/
+build/
+dist/
