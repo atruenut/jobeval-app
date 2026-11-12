@@ -6,7 +6,8 @@ bool evaluate_job(const std::shared_ptr<const Bundle>& bundle, const JobInputs& 
                   std::vector<TraceEntry>& trace, std::string& error) {
     const Decimal hundred = Decimal::from_int(100);
     if (in.pay.is_negative() || in.bonus_annual.is_negative() || in.shift_premium_per_hour.is_negative() ||
-        in.company_multiplier.is_negative() || in.company_threshold_hours.is_negative()) {
+        in.company_multiplier.is_negative() || in.company_threshold_hours.is_negative() || in.signing_bonus.is_negative() ||
+        in.expected_years.is_negative()) {
         error = "pay, bonus, premium and overtime values cannot be negative";
         return false;
     }
@@ -47,6 +48,7 @@ bool evaluate_job(const std::shared_ptr<const Bundle>& bundle, const JobInputs& 
     }
     t.hourly_wage = o.hourly_wage;
     t.other_pay_annual = in.bonus_annual + in.shift_premium_per_hour * in.shift_premium_percent / hundred * hours_paid;
+    if (!in.signing_bonus.is_zero() && !in.expected_years.is_zero()) t.other_pay_annual = t.other_pay_annual + in.signing_bonus / in.expected_years;
 
     if (!compute_take_home(bundle, t, o.take_home, trace, error)) return false;
 
@@ -58,6 +60,7 @@ bool evaluate_job(const std::shared_ptr<const Bundle>& bundle, const JobInputs& 
     r.paid_vacation_weeks = in.paid_vacation_weeks;
     r.paid_days_off = in.paid_days_off;
     r.days_per_week = in.days_per_week;
+    r.remote_days_per_week = in.remote_days_per_week;
     r.unpaid_minutes_per_day = in.unpaid_minutes_per_day;
     r.commute_distance = in.commute_distance;
     r.commute_minutes = in.commute_minutes;
@@ -71,6 +74,38 @@ bool evaluate_job(const std::shared_ptr<const Bundle>& bundle, const JobInputs& 
     r.other_benefits_annual = in.other_benefits_annual;
     if (!compute_real_hourly(r, o.real, error)) return false;
     out = std::move(o);
+    return true;
+}
+
+bool solve_pay_for_real_hourly(const std::shared_ptr<const Bundle>& bundle, const JobInputs& base, const Decimal& target,
+                               const Decimal& pay_ceiling, Decimal& pay_needed, std::string& error) {
+    auto real_at = [&](const Decimal& pay, Decimal& real) {
+        JobInputs j = base;
+        j.pay = pay;
+        JobOutcome o;
+        std::vector<TraceEntry> trace;
+        return evaluate_job(bundle, j, o, trace, error) ? (real = o.real.real_hourly, true) : false;
+    };
+    Decimal lo, hi = pay_ceiling, r;
+    if (!real_at(hi, r)) return false;
+    if (r < target) {
+        error = "the target is not reachable within the pay ceiling";
+        return false;
+    }
+    if (!real_at(lo, r)) return false;
+    if (r >= target) {
+        pay_needed = lo;
+        return true;
+    }
+    const Decimal half = Decimal::parse("0.5");
+    const Decimal tolerance = Decimal::parse("0.001");
+    for (int i = 0; i < 80 && (hi - lo) > tolerance; ++i) {
+        const Decimal mid = (lo + hi) * half;
+        if (!real_at(mid, r)) return false;
+        if (r < target) lo = mid;
+        else hi = mid;
+    }
+    pay_needed = hi;
     return true;
 }
 

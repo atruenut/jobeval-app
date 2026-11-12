@@ -39,6 +39,30 @@ const QList<FieldSpec>& fieldSpecs() {
         {"workcosts", 0, 0, 9999999, 2},
         {"unpaid", 0, 0, 600, 0},
         {"unit", 0, 0, 1, 0},         // 0 km, 1 mi (display only)
+        {"kind", 0, 0, 1, 0},         // 0 employment, 1 not working
+        {"remote", 0, 0, 7, 1},       // days per week worked from home
+        {"signing", 0, 0, 9999999, 2},
+        {"stay", 2, 0.5, 40, 1},      // years you expect to stay (spreads the signing bonus)
+        {"raise", 0, 0, 50, 1},       // expected annual raise, percent
+        // How the job feels, 0-10 (higher is better; stress is scored as "low stress").
+        {"s_stability", 5, 0, 10, 0},
+        {"s_growth", 5, 0, 10, 0},
+        {"s_interest", 5, 0, 10, 0},
+        {"s_flex", 5, 0, 10, 0},
+        {"s_culture", 5, 0, 10, 0},
+        {"s_stress", 5, 0, 10, 0},
+        {"s_learning", 5, 0, 10, 0},
+        {"s_location", 5, 0, 10, 0},
+        // Not-working situations.
+        {"nw_kind", 0, 0, 3, 0},      // 0 unemployment, 1 student, 2 savings / gap, 3 other
+        {"nw_ei", 1, 0, 1, 0},        // use the region's unemployment benefit formula
+        {"nw_prior", 0, 0, 9999999, 2},
+        {"nw_weeks", 0, 0, 520, 0},
+        {"nw_taxable", 0, 0, 999999, 2},
+        {"nw_taxfree", 0, 0, 999999, 2},
+        {"nw_expenses", 0, 0, 999999, 2},
+        {"nw_savings", 0, 0, 99999999, 2},
+        {"nw_hours", 0, 0, 168, 1},
     };
     return specs;
 }
@@ -96,6 +120,9 @@ JobInputs inputsFromState(const QVariantMap& state) {
     j.use_legal_threshold = s["otlegal"].toInt() != 0;
     j.company_threshold_hours = dec(s, "otthr");
     j.bonus_annual = dec(s, "bonus");
+    j.signing_bonus = dec(s, "signing");
+    j.expected_years = dec(s, "stay");
+    j.remote_days_per_week = dec(s, "remote");
     j.shift_premium_per_hour = dec(s, "premium");
     j.shift_premium_percent = dec(s, "premshare");
     j.paid_vacation_weeks = dec(s, "vacation");
@@ -120,6 +147,25 @@ JobInputs inputsFromState(const QVariantMap& state) {
     return j;
 }
 
+NotWorkingInputs notWorkingFromState(const QVariantMap& state) {
+    const QVariantMap s = normalizedState(state);
+    NotWorkingInputs n;
+    n.use_unemployment_benefit = s["nw_ei"].toInt() != 0 && s["nw_kind"].toInt() == 0;
+    n.prior_earnings_annual = dec(s, "nw_prior");
+    n.benefit_weeks = dec(s, "nw_weeks");
+    n.other_taxable_monthly = dec(s, "nw_taxable");
+    n.tax_free_monthly = dec(s, "nw_taxfree");
+    n.monthly_expenses = dec(s, "nw_expenses");
+    n.savings = dec(s, "nw_savings");
+    n.activity_hours_per_week = dec(s, "nw_hours");
+    n.as_of = s["asof"].toString().toStdString();
+    for (auto it = s.begin(); it != s.end(); ++it) {
+        if (!it.key().startsWith("x.")) continue;
+        n.extra[it.key().mid(2).toStdString()] = Value::num(Decimal::parse(QString::number(it.value().toDouble(), 'f', 2).toStdString()));
+    }
+    return n;
+}
+
 QByteArray projectToJson(const Project& p, const QString& kind) {
     QJsonArray jobs;
     for (const Job& j : p.jobs) {
@@ -142,6 +188,10 @@ QByteArray projectToJson(const Project& p, const QString& kind) {
     root["kind"] = kind;
     root["name"] = p.name;
     root["jobs"] = jobs;
+    QJsonObject pr;
+    for (auto it = p.priorities.begin(); it != p.priorities.end(); ++it) pr[it.key()] = it.value().toDouble();
+    if (!pr.isEmpty()) root["priorities"] = pr;
+    if (!p.baselineId.isEmpty()) root["baseline"] = p.baselineId;
     return QJsonDocument(root).toJson(QJsonDocument::Indented);
 }
 
@@ -180,6 +230,12 @@ bool projectFromJson(const QByteArray& json, Project& out, QString& error) {
         j.state = normalizedState(raw);
         p.jobs.append(j);
     }
+    const QJsonObject pr = root["priorities"].toObject();
+    for (auto it = pr.begin(); it != pr.end(); ++it) {
+        const double v = it.value().toDouble(-1);
+        if (v >= 0 && v <= 10) p.priorities[it.key()] = v;
+    }
+    p.baselineId = root["baseline"].toString();
     out = p;
     return true;
 }

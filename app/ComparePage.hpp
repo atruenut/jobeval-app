@@ -1,27 +1,74 @@
 #pragma once
 
+#include <QList>
+#include <QMap>
+#include <QVariantMap>
 #include <QWidget>
-#include <functional>
-#include <memory>
 
+#include "ChartWidget.hpp"
 #include "JobModel.hpp"
-#include "evalcore/pack.hpp"
+#include "JobResult.hpp"
 
 class QLabel;
+class QComboBox;
+class QSlider;
+class QSpinBox;
 class QTableWidget;
+class QTabWidget;
+class QToolButton;
 
-// Jobs side by side. Ranking is by real hourly pay, and only between jobs paid in the same
-// currency (a Canadian and a US job are shown but never ranked against each other).
+// Jobs side by side: overview table, charts, a weighted "fit" score driven by the person's own
+// priorities, and what-if tools (break-even pay, pay curves, pay in N years). Money rankings only
+// happen between jobs paid in the same currency.
 class ComparePage : public QWidget {
     Q_OBJECT
 public:
-    using BundleLookup = std::function<std::shared_ptr<const jobeval::Bundle>(const QString& packId)>;
     explicit ComparePage(QWidget* parent = nullptr);
-    void refresh(const QList<Job>& jobs, const BundleLookup& lookup, const QMap<QString, QString>& regionNames);
+    void refresh(const QList<Job>& jobs, const BundleLookup& lookup, const QMap<QString, QString>& regionNames,
+                 const QVariantMap& priorities, const QString& baselineId);
+
+    void showSubTab(int sub, int chart);  // developer/screenshot aid
+
+Q_SIGNALS:
+    void prioritiesChanged(const QVariantMap& priorities);
+    void baselineChanged(const QString& jobId);
 
 private:
+    void rebuild();          // recompute scores and redraw everything from jobs_/priorities_
+    void buildOverview();
+    void buildWhatIf();
+    void onPriorityEdited();
+
+    QList<Job> jobs_;
+    BundleLookup lookup_;
+    QVariantMap priorities_;
+    QString baselineId_;
+    QList<JobResult> results_;
+    bool updating_ = false;
+
+    QTabWidget* tabs_;
+    // overview
     QLabel* summary_;
     QLabel* warning_;
     QLabel* empty_;
+    QComboBox* baseline_;
+    QToolButton* rowsButton_;
     QTableWidget* table_;
+    QMap<QString, bool> rowVisible_;
+    // charts
+    QComboBox* chartKind_;
+    ChartWidget* chart_;
+    QLabel* chartNote_;
+    // fit
+    QMap<QString, QSlider*> sliders_;
+    QMap<QString, QLabel*> sliderValues_;
+    ChartWidget* fitChart_;
+    QLabel* fitText_;
+    // what-if
+    QComboBox* adjustJob_;
+    QComboBox* matchJob_;
+    QLabel* breakEven_;
+    QSpinBox* years_;
+    QLabel* futureText_;
+    ChartWidget* curveChart_;
 };

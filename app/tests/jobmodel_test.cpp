@@ -1,6 +1,7 @@
 #include <QtTest>
 
 #include "../JobModel.hpp"
+#include "../JobResult.hpp"
 
 class JobModelTest : public QObject {
     Q_OBJECT
@@ -92,6 +93,55 @@ private Q_SLOTS:
         QVERIFY(!j.use_legal_threshold);
         QCOMPARE(QString::fromStdString(j.company_threshold_hours.to_string()), QString("42"));
         QCOMPARE(QString::fromStdString(j.bonus_annual.to_string()), QString("1000"));
+    }
+
+    void prioritiesRoundTripAndClamp() {
+        Project p;
+        p.name = "P";
+        p.priorities = {{"money", 9}, {"stress", 2}};
+        p.baselineId = "nw-1";
+        Project q;
+        QString err;
+        QVERIFY2(projectFromJson(projectToJson(p, "project"), q, err), qPrintable(err));
+        QCOMPARE(q.baselineId, QString("nw-1"));
+        QCOMPARE(q.priorities.value("money").toInt(), 9);
+        const QVariantMap n = normalizedPriorities({{"money", 99}, {"time", -4}, {"bogus", 3}, {"stress", "x"}});
+        QCOMPARE(n.value("money").toDouble(), 10.0);
+        QCOMPARE(n.value("time").toDouble(), 0.0);
+        QVERIFY(!n.contains("bogus"));
+        QCOMPARE(n.value("stress").toDouble(), defaultPriorities().value("stress").toDouble());
+    }
+
+    void fitScoresRelativeWithinCurrency() {
+        auto mk = [](const char* id, const char* cur, double monthly, double hours) {
+            JobResult r;
+            r.job.id = id;
+            r.job.state = defaultState();
+            r.ok = true;
+            r.currency = cur;
+            r.monthlyValue = monthly;
+            r.hoursPerWeek = hours;
+            return r;
+        };
+        QList<JobResult> rs = {mk("a", "CAD", 3000, 30), mk("b", "CAD", 1500, 60), mk("c", "USD", 100, 0)};
+        QVariantMap w;
+        for (const Criterion& c : criteria()) w[c.key] = 0;
+        w["money"] = 1;
+        w["time"] = 1;
+        scoreResults(rs, w);
+        QCOMPARE(rs[0].scores["money"], 10.0);  // best in CAD
+        QCOMPARE(rs[1].scores["money"], 5.0);
+        QCOMPARE(rs[2].scores["money"], 10.0);  // alone in USD, never compared with CAD
+        QCOMPARE(rs[0].scores["time"], 5.0);    // 30 h of 60
+        QCOMPARE(rs[1].scores["time"], 0.0);
+        QCOMPARE(rs[2].scores["time"], 10.0);
+        QVERIFY(qAbs(rs[0].fit - 75.0) < 1e-6);   // (10 + 5) / 20
+        QVERIFY(qAbs(rs[1].fit - 25.0) < 1e-6);   // (5 + 0) / 20
+        QVERIFY(qAbs(rs[2].fit - 100.0) < 1e-6);
+        // Zero weights everywhere: no fit at all.
+        for (const Criterion& c : criteria()) w[c.key] = 0;
+        scoreResults(rs, w);
+        QVERIFY(!rs[0].hasFit);
     }
 };
 

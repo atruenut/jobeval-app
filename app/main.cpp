@@ -45,6 +45,8 @@ int main(int argc, char** argv) {
     cli.addOption({"demo", "Developer: start a new project with one job in this pack id.", "packId"});
     cli.addOption({"job", "Developer: select this job number (1-based).", "n"});
     cli.addOption({"tab", "Developer: show this tab (compare).", "name"});
+    cli.addOption({"subtab", "Developer: Compare sub-tab index (0-3).", "n"});
+    cli.addOption({"chart", "Developer: Charts view index (0-4).", "n"});
     cli.addOption({"session-file", "Developer: use this autosave file.", "file"});
     cli.addPositionalArgument("file", "A .jobeval project to open.");
     cli.addOption({"page", "Developer: with --screenshot, 'region' shows the region page.", "name"});
@@ -88,6 +90,7 @@ int main(int argc, char** argv) {
     }
     if (cli.isSet("job")) w.selectJobRow(cli.value("job").toInt() - 1);
     if (cli.value("tab") == "compare") w.showCompareTab();
+    if (cli.isSet("subtab")) w.showCompareSubTab(cli.value("subtab").toInt(), cli.isSet("chart") ? cli.value("chart").toInt() : 0);
     if (cli.value("page") == "region") w.showRegionPage(true);
     w.show();
 

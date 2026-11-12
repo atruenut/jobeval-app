@@ -19,6 +19,7 @@ class QLabel;
 class QLineEdit;
 class QPlainTextEdit;
 class QPushButton;
+class QSlider;
 class QTableWidget;
 
 // Edits one job and shows what it pays. Recalculates live on every change.
@@ -38,7 +39,7 @@ Q_SIGNALS:
     void jobEdited(const QString& name, const QString& notes, const QVariantMap& state);
 
 private:
-    enum class Unit { Plain, Hours, Weeks, Days, Minutes, Percent, Times, Dist, PerHour, PerDay, PerMonth, PerYear, PerDist, Money };
+    enum class Unit { Plain, Years, PercentYear, Hours, Weeks, Days, Minutes, Percent, Times, Dist, PerHour, PerDay, PerMonth, PerYear, PerDist, Money };
     struct Field {
         QDoubleSpinBox* box = nullptr;
         QWidget* label = nullptr;
@@ -52,6 +53,9 @@ private:
     void applyUnits();
     void updateVisibility();
     QVariantMap collectState() const;
+    void recalcNotWorking();
+    void addSlider(QFormLayout* form, const QString& key, const QString& label, const QString& tip);
+    void convertPayBasis();
     QString suffixFor(Unit u) const;
 
     std::shared_ptr<const jobeval::Bundle> bundle_;
@@ -68,12 +72,25 @@ private:
     QFormLayout* otForm_;
     QGroupBox* otBox_;
     QComboBox* basis_;
+    int lastBasis_ = 0;
+    QComboBox* kind_;
+    QMap<QString, QSlider*> sliders_;
+    QGroupBox* payBox_;
+    QGroupBox* goBox_;
+    QGroupBox* costBox_;
+    QGroupBox* nwBox_;
+    QComboBox* nwKind_;
+    QCheckBox* nwEi_;
+    QLabel* nwNote_;
     QComboBox* otMode_;
     QCheckBox* otLegal_;
     QComboBox* unit_;
     QDateEdit* asOf_;
     QFormLayout* extraForm_;
     QGroupBox* extraBox_;
+    QLabel* cap1_;
+    QLabel* cap2_;
+    QLabel* cap3_;
     QLabel* realHourly_;
     QLabel* monthly_;
     QLabel* hourlyAfterTax_;

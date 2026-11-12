@@ -34,6 +34,8 @@ struct JobInputs {
     bool use_legal_threshold = true;    // Company mode: start overtime where the law does (if it has a threshold)
     Decimal company_threshold_hours;    // otherwise this
     Decimal bonus_annual;               // taxable
+    Decimal signing_bonus;              // one-off, taxable; spread over expected_years in the yearly figures
+    Decimal expected_years;             // how long you expect to stay (used for the signing bonus)
     Decimal shift_premium_per_hour;     // taxable extra pay per hour on the shifts it applies to
     Decimal shift_premium_percent;      // % of paid hours it applies to (0-100)
 
@@ -41,6 +43,7 @@ struct JobInputs {
     Decimal paid_vacation_weeks;
     Decimal paid_days_off;
     Decimal days_per_week;
+    Decimal remote_days_per_week;  // of days_per_week, worked from home
     Decimal unpaid_minutes_per_day;
 
     // Costs and benefits (see realhourly.hpp)
@@ -60,5 +63,12 @@ struct JobOutcome {
 
 bool evaluate_job(const std::shared_ptr<const Bundle>& bundle, const JobInputs& in, JobOutcome& out,
                   std::vector<TraceEntry>& trace, std::string& error);
+
+// Finds the pay (hourly wage, or annual salary for PayBasis::Salary) at which this job's real
+// hourly figure equals `target`, holding every other input fixed. Real hourly rises with pay,
+// so this bisects on pay up to `pay_ceiling`. Returns false if even the ceiling falls short
+// (or evaluation fails); `pay_needed` is then unchanged.
+bool solve_pay_for_real_hourly(const std::shared_ptr<const Bundle>& bundle, const JobInputs& base, const Decimal& target,
+                               const Decimal& pay_ceiling, Decimal& pay_needed, std::string& error);
 
 }  // namespace jobeval
