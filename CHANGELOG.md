@@ -1,7 +1,7 @@
 # Changelog
 
 ## 0.5.0
-- Region list now covers ten more Canadian provinces and territories (data packs only; no engine change): BC, AB, SK, MB, ON (surtax, health premium), NS, NL, YT, NT, NU. PEI and Quebec are not included yet. See jobeval-data `docs/COVERAGE.md`.
+- Region list now covers ten more Canadian provinces and territories (data packs only; no engine change): BC, AB, SK, MB, ON (surtax, health premium), NS, NL, YT, NT, NU. Prince Edward Island was added afterwards as a data pack (no app release needed). Quebec is not included yet. See jobeval-data `docs/COVERAGE.md`.
 - Region page lists provinces alphabetically and picks one by default instead of "whole country" (renamed "Federal rules only").
 
 ## 0.4.0
