@@ -17,12 +17,21 @@ Newest first. Keep this current: one entry per merged milestone or notable decis
 
 ## Log
 
+### 2026-11-12 (night) — PEI pack
+- CA-PE-2026 added in jobeval-data (PR #5). The "footnote" worry was unfounded: CRA T4032PE and EY
+  agree on 142,250 / KP 6,460 (the PEI finance page prints 142,520, apparently a typo; both values
+  are continuity-consistent, so the check could not decide, the two agreeing sources did).
+- New in 2026: a 20% bracket over 200,000, effective for all of 2026 (first published as 2027, then
+  corrected). The PEI page calls it proposed (Bill 23); payroll applies it from July. Modelled with
+  KP 8,460 by continuity; "enactment unconfirmed" is in not_modelled. Overtime: 48 h at 1.5x.
+- Not modelled: PEI low-income tax reduction. Tests: 8 derived (incl. a 250,000 case).
+- Next: 2027 pack when CRA publishes, then US.
+
 ### 2026-11-12 (evening) — M7 provinces
 - Ten provincial/territorial packs added in jobeval-data (PR #4). Tax from CRA T4127 ed.122 chapter 8
   and T4032ON; overtime from each government's page where one was retrieved and read. NL (minimum
   overtime rate, multiplier unconfirmed) and YT (no source) have no statutory overtime on purpose.
-  PEI is held back: its fifth bracket has a footnote that was not retrieved. Quebec needs its own
-  design (QPP, QPIP, abatement).
+  Quebec needs its own design (QPP, QPIP, abatement).
 - Tests: derived from `tools/reference_ca_provinces.py`, which uses CRA's V x A - K form with the
   exact constants; it asserts the published rounded K values agree with the thresholds (within $1),
   which is what catches transcription typos.
