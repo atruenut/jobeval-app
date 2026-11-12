@@ -17,6 +17,18 @@ Newest first. Keep this current: one entry per merged milestone or notable decis
 
 ## Log
 
+### 2026-11-12 (evening) — M7 provinces
+- Ten provincial/territorial packs added in jobeval-data (PR #4). Tax from CRA T4127 ed.122 chapter 8
+  and T4032ON; overtime from each government's page where one was retrieved and read. NL (minimum
+  overtime rate, multiplier unconfirmed) and YT (no source) have no statutory overtime on purpose.
+  PEI is held back: its fifth bracket has a footnote that was not retrieved. Quebec needs its own
+  design (QPP, QPIP, abatement).
+- Tests: derived from `tools/reference_ca_provinces.py`, which uses CRA's V x A - K form with the
+  exact constants; it asserts the published rounded K values agree with the thresholds (within $1),
+  which is what catches transcription typos.
+- No engine change was needed. Open: official calculator runs for any province; 2027 pack (wait for
+  the 2027 T4127 and CPP/EI announcements); US and UK.
+
 ### 2026-11-12 (later) — M7 consistency audit, sorting, what-if controls
 - Audit of the money/time chain found: (1) `benefit_weeks` was collected but never used, so a 26-week
   benefit was taxed and budgeted as a full year. `evaluate_not_working` now taxes year one on what is

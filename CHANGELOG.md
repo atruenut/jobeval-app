@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.0
+- Region list now covers ten more Canadian provinces and territories (data packs only; no engine change): BC, AB, SK, MB, ON (surtax, health premium), NS, NL, YT, NT, NU. PEI and Quebec are not included yet. See jobeval-data `docs/COVERAGE.md`.
+- Region page lists provinces alphabetically and picks one by default instead of "whole country" (renamed "Federal rules only").
+
 ## 0.4.0
 - Job list can be ordered: added, newest, name, pay, real hourly, take-home, hours, fit score, region (remembered; the project keeps its own order). Compare columns follow it.
 - What if rebuilt: Scenario tab (pay change, raises over N years, inflation, hours, commute, remote days, bonus, benefits, costs, vacation, side by side with today), Break-even (match a job or your own figure, on top of the scenario), What matters most (one-at-a-time sensitivity), Pay curves.

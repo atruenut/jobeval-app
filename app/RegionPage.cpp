@@ -1,5 +1,7 @@
 #include "RegionPage.hpp"
 
+#include <algorithm>
+
 #include <QComboBox>
 #include <QFormLayout>
 #include <QHBoxLayout>
@@ -128,10 +130,13 @@ void RegionPage::populateSubregions() {
     subregion_->clear();
     const QString countryId = country_->currentData().toString();
     if (!countryId.isEmpty()) {
-        subregion_->addItem(tr("Whole country"), countryId);
-        for (const auto& e : service_->catalog().packs) {
-            if (e.extends == countryId.toStdString()) subregion_->addItem(labelOf(e), QString::fromStdString(e.id));
-        }
+        subregion_->addItem(tr("Federal rules only (no province or territory)"), countryId);
+        QList<QPair<QString, QString>> subs;
+        for (const auto& e : service_->catalog().packs)
+            if (e.extends == countryId.toStdString()) subs.append({labelOf(e), QString::fromStdString(e.id)});
+        std::sort(subs.begin(), subs.end(), [](const auto& a, const auto& b) { return a.first.localeAwareCompare(b.first) < 0; });
+        for (const auto& sub : subs) subregion_->addItem(sub.first, sub.second);
+        if (subs.size() > 0) subregion_->setCurrentIndex(1);  // a province is almost always what the person wants
     }
     subregion_->setEnabled(subregion_->count() > 1);
     subregion_->blockSignals(false);
