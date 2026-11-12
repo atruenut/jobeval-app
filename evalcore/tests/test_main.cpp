@@ -12,6 +12,8 @@
 #include "evalcore/takehome.hpp"
 #include "evalcore/realhourly.hpp"
 #include "evalcore/jobcalc.hpp"
+#include "evalcore/notworking.hpp"
+#include "evalcore/scoring.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -971,6 +973,130 @@ static void test_jobcalc() {
     CHECK(!compute_real_hourly(rh, rr, err));
 }
 
+static const char* kBenefitPack = R"J({
+  "schema": 1, "id": "N-2026", "kind": "country", "region": {"country": "NN"},
+  "valid": {"from": "2026-01-01"}, "revision": 1, "tier": "partial", "currency": "NNN",
+  "sources": {"s": {"authority": "official", "title": "t"}},
+  "parameters": {"rate": {"source": "s", "value": 0.1}, "ben_rate": {"source": "s", "value": 0.5}, "ben_cap": {"source": "s", "value": 400}},
+  "inputs": {"gross_annual": {"type": "money"}, "wage": {"type": "money", "default": 0},
+             "other_income": {"type": "money", "default": 0}, "prior_earnings_annual": {"type": "money", "default": 0}},
+  "rules": [
+    {"id": "tax", "label": {"en": "Income tax"}, "expr": "(gross_annual + other_income) * $rate"},
+    {"id": "ben", "expr": "min($ben_rate * prior_earnings_annual / 52, $ben_cap)"}
+  ],
+  "outputs": {"income_tax": ["tax"], "unemployment_weekly_benefit": ["ben"]}
+})J";
+
+static void test_not_working_and_more() {
+    std::puts("not working, remote, solver, scoring");
+    Diagnostics diag;
+    auto nb = bundle_of(kBenefitPack, diag, "N-2026");
+    CHECK(nb != nullptr);
+    std::vector<TraceEntry> trace;
+    std::string err;
+    if (nb) {
+        NotWorkingInputs in;
+        in.use_unemployment_benefit = true;
+        in.prior_earnings_annual = D("20800");  // 0.5 * 20800 / 52 = 200 a week
+        in.other_taxable_monthly = D("100");
+        in.tax_free_monthly = D("50");
+        in.monthly_expenses = D("1500");
+        in.savings = D("5800");
+        in.activity_hours_per_week = D("10");
+        in.as_of = "2026-06-01";
+        NotWorkingOutcome o;
+        CHECK(evaluate_not_working(nb, in, o, trace, err));
+        CHECK(o.pack_has_benefit);
+        CHECK_EQ(o.weekly_benefit.to_string(), "200");
+        CHECK_EQ(o.taxable_annual.to_string(), "11600");       // 200*52 + 100*12
+        CHECK_EQ(o.take_home.income_tax.to_string(), "1160");  // 10%
+        CHECK_EQ(o.net_annual.to_string(), "11040");           // 11600 - 1160 + 50*12
+        CHECK_EQ(o.net_monthly.to_string(), "920");
+        CHECK_EQ(o.monthly_shortfall.to_string(), "580");
+        CHECK(!o.runway_unlimited);
+        CHECK_EQ(o.runway_months.to_string(), "10");           // 5800 / 580
+        CHECK_EQ(o.activity_hours_year.to_string(), "520");
+
+        in.prior_earnings_annual = D("100000");  // capped at 400 a week
+        CHECK(evaluate_not_working(nb, in, o, trace, err));
+        CHECK_EQ(o.weekly_benefit.to_string(), "400");
+
+        in.use_unemployment_benefit = false;  // no claim: only the entered income
+        CHECK(evaluate_not_working(nb, in, o, trace, err));
+        CHECK_EQ(o.weekly_benefit.to_string(), "0");
+        CHECK_EQ(o.net_annual.to_string(), "1680");  // 1200 - 120 + 600
+        CHECK_EQ(o.net_monthly.to_string(), "140");
+
+        in.monthly_expenses = D("100");  // income covers expenses: unlimited runway
+        CHECK(evaluate_not_working(nb, in, o, trace, err));
+        CHECK(o.runway_unlimited);
+
+        in.savings = D("-1");
+        CHECK(!evaluate_not_working(nb, in, o, trace, err));
+    }
+
+    // A pack with no unemployment benefit slot: the entered income still works.
+    auto ob = bundle_of(kOvertimePack, diag, "O-2026");
+    CHECK(ob != nullptr);
+    if (ob) {
+        NotWorkingInputs in;
+        in.use_unemployment_benefit = true;
+        in.tax_free_monthly = D("100");
+        in.as_of = "2026-06-01";
+        NotWorkingOutcome o;
+        CHECK(evaluate_not_working(ob, in, o, trace, err));
+        CHECK(!o.pack_has_benefit);
+        CHECK_EQ(o.net_annual.to_string(), "1200");
+
+        // Break-even pay: real hourly equals pay when nothing else intrudes.
+        JobInputs j = job_base();
+        Decimal pay;
+        CHECK(solve_pay_for_real_hourly(ob, j, D("25"), D("1000"), pay, err));
+        CHECK_EQ(pay.to_fixed(2), "25.00");
+        CHECK(!solve_pay_for_real_hourly(ob, j, D("5000"), D("1000"), pay, err));
+        // With a 10 CAD/day cost on 260 days (2600 a year over 2080 h) the wage must rise by 1.25.
+        j.daily_parking_and_tolls = D("10");
+        CHECK(solve_pay_for_real_hourly(ob, j, D("25"), D("1000"), pay, err));
+        CHECK_EQ(pay.to_fixed(2), "26.25");
+
+        // Signing bonus spread over the expected stay: 41600 + 3000 / 2.
+        JobInputs sb = job_base();
+        sb.signing_bonus = D("3000");
+        sb.expected_years = D("2");
+        JobOutcome jo;
+        CHECK(evaluate_job(ob, sb, jo, trace, err));
+        CHECK_EQ(jo.take_home.gross_annual.to_string(), "43100");
+
+        // Remote days remove commuting: 5 days, 2 remote -> 156 commute days a year.
+        JobInputs rm = job_base();
+        rm.remote_days_per_week = D("2");
+        rm.commute_distance = D("20");
+        rm.commute_minutes = D("30");
+        rm.cost_per_distance = D("0.25");
+        rm.daily_transit_fare = D("5");
+        CHECK(evaluate_job(ob, rm, jo, trace, err));
+        CHECK_EQ(jo.real.commute_days.to_string(), "156");
+        CHECK_EQ(jo.real.commute_distance_total.to_string(), "6240");
+        CHECK_EQ(jo.real.vehicle_cost.to_string(), "1560");
+        CHECK_EQ(jo.real.transit_cost.to_string(), "780");
+        CHECK_EQ(jo.real.commute_hours.to_string(), "156");
+        rm.remote_days_per_week = D("6");
+        CHECK(!evaluate_job(ob, rm, jo, trace, err));
+    }
+
+    // Scoring.
+    Decimal fit;
+    CHECK(weighted_fit({{"a", D("8")}, {"b", D("4")}, {"d", D("10")}}, {{"a", D("3")}, {"b", D("1")}, {"c", D("5")}, {"d", D("0")}}, fit));
+    CHECK_EQ(fit.to_string(), "70");  // (8*3 + 4*1) / 4 * 10; "c" has no score, "d" has no weight
+    CHECK(!weighted_fit({{"a", D("8")}}, {{"b", D("1")}}, fit));
+    CHECK_EQ(fit.to_string(), "0");
+    CHECK_EQ(scale_score(D("15"), D("10"), D("20")).to_string(), "5");
+    CHECK_EQ(scale_score(D("60"), D("80"), D("40")).to_string(), "5");  // lower is better
+    CHECK_EQ(scale_score(D("999"), D("10"), D("20")).to_string(), "10");
+    CHECK_EQ(scale_score(D("-5"), D("10"), D("20")).to_string(), "0");
+    CHECK_EQ(scale_score(D("3"), D("7"), D("7")).to_string(), "10");
+}
+
 int main() {
     std::setvbuf(stdout, nullptr, _IONBF, 0);  // keep progress visible if a test ever crashes
     try {
@@ -988,6 +1114,7 @@ int main() {
     test_overtime();
     test_real_hourly();
     test_jobcalc();
+    test_not_working_and_more();
     } catch (const std::exception& e) {
         ++g_failures;
         std::printf("  FAILED: uncaught exception: %s\n", e.what());

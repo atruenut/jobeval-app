@@ -29,6 +29,7 @@ public:
     // Developer/testing helpers.
     void applyStateToCurrent(const QVariantMap& values);
     void showCompareTab();
+    void showCompareSubTab(int sub, int chart);
     void selectJobRow(int row);
     void addJobInRegion(const QString& packId);
     void showRegionPage(bool forNewJob);

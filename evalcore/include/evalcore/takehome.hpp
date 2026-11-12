@@ -43,6 +43,8 @@ struct TakeHomeInput {
     Decimal base_pay_annual;
     // Taxable pay on top of base pay and overtime (bonus, shift premiums, commission...).
     Decimal other_pay_annual;
+    // Taxable income that is not employment pay (benefits...). Passed to the pack as `other_income`.
+    Decimal other_income_annual;
 };
 
 struct SlotLine {
@@ -58,6 +60,7 @@ struct TakeHomeResult {
     Decimal overtime_rate;            // average hourly rate paid for those hours
     Decimal overtime_pay_annual;      // total pay for those hours (included in gross_annual)
     Decimal other_pay_annual;         // as supplied; included in gross_annual
+    Decimal other_income_annual;      // as supplied; taxed, included in net_annual, not in gross_annual
     Decimal legal_overtime_rate;      // the region's minimum rate (0 if the pack has none)
     Decimal legal_overtime_threshold; // the region's threshold (0 if none)
     Decimal income_tax;     // annual

@@ -26,6 +26,7 @@ struct RealHourlyInput {
     Decimal paid_vacation_weeks;  // paid weeks in which you do not work (no commute, no hours)
     Decimal paid_days_off;        // further paid days not worked per year: statutory holidays, sick days
     Decimal days_per_week;        // days actually worked per working week
+    Decimal remote_days_per_week; // of those, days worked from home (no commute, no parking, no fare)
     Decimal unpaid_minutes_per_day;  // unpaid breaks, changing, waiting for shifts
 
     // Getting there (one way).
@@ -46,6 +47,7 @@ struct RealHourlyInput {
 struct RealHourlyResult {
     Decimal weeks_worked;
     Decimal days_worked;
+    Decimal commute_days;       // days worked away from home
 
     Decimal hours_worked;       // paid hours actually worked
     Decimal hours_paid;         // including paid vacation

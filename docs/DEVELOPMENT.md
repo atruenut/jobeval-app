@@ -17,6 +17,19 @@ Newest first. Keep this current: one entry per merged milestone or notable decis
 
 ## Log
 
+### 2026-11-12 — M6 not working, more variables, advanced compare
+- Engine: `notworking` (benefit from the pack slot `unemployment_weekly_benefit`, runway), `scoring`
+  (weighted fit 0-100, 0-10 scales), overtime tiers, remote days, signing bonus. 372 checks.
+- App: `JobResult` evaluates a job or not-working entry once for all views; `ChartWidget` paints
+  every chart by hand (no Qt Charts dependency, keeps the Windows bundle small); `ComparePage` has
+  Overview / Charts / Fit score / What if. Money is only ranked within one currency.
+- Fit score: money and real hourly are relative to the best in the same currency; free time is
+  absolute (0 h = 10, 60 h = 0); subjective criteria come from the job's own sliders.
+- Break-even uses `solve_pay_for_real_hourly` (bisection). "Pay in N years" holds brackets fixed.
+- Testing: `--subtab N --chart N` dev flags screenshot each view. A scratch cache needs
+  `installed.json` + packs (copy from the dev site build) or jobs show "rules not downloaded".
+- Needs jobeval-data PR (pack revision 3, EI benefit) merged to get benefits in not-working mode.
+
 ### 2026-11-11 (later) — M5 projects, company policy, units
 - Engine: `jobcalc` evaluates a whole job. Overtime now has tiers: the region's legal
   minimum plus optional company policy (any multiplier, own threshold); each hour earns the
@@ -70,3 +83,4 @@ Newest first. Keep this current: one entry per merged milestone or notable decis
 - Tax lines are simplified (taxable income = gross, most credits unmodelled).
 - No installer; the Windows build is an unzipped folder, unsigned (SmartScreen may warn).
 - Only Canada/NB packs exist.
+- Break-even and pay-in-N-years hold tax brackets and costs fixed.

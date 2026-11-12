@@ -29,7 +29,7 @@ bool compute_take_home(const std::shared_ptr<const Bundle>& bundle, const TakeHo
                        std::vector<TraceEntry>& trace, std::string& error) {
     try {
         if (in.hourly_wage.is_negative() || in.hours_per_week.is_negative() || in.weeks_per_year.is_negative() ||
-            in.other_pay_annual.is_negative() || in.base_pay_annual.is_negative()) {
+            in.other_pay_annual.is_negative() || in.other_income_annual.is_negative() || in.base_pay_annual.is_negative()) {
             error = "wage, hours, weeks and pay cannot be negative";
             return false;
         }
@@ -89,11 +89,13 @@ bool compute_take_home(const std::shared_ptr<const Bundle>& bundle, const TakeHo
         r.other_pay_annual = in.other_pay_annual;
         r.gross_annual = (in.has_base_pay_override ? in.base_pay_annual : weekly * in.weeks_per_year) + in.other_pay_annual;
         ei.values["gross_annual"] = Value::num(r.gross_annual);
+        ei.values["other_income"] = Value::num(in.other_income_annual);
+        r.other_income_annual = in.other_income_annual;
         Evaluator ev(bundle, ei);
 
         slot_lines(ev, *bundle, "income_tax", r.income_tax_lines, r.income_tax);
         slot_lines(ev, *bundle, "contributions", r.contribution_lines, r.contributions);
-        r.net_annual = r.gross_annual - r.income_tax - r.contributions;
+        r.net_annual = r.gross_annual + r.other_income_annual - r.income_tax - r.contributions;
         r.net_monthly = r.net_annual / Decimal::from_int(12);
         if (!r.hours_per_year.is_zero()) r.net_hourly = r.net_annual / r.hours_per_year;
         out = std::move(r);

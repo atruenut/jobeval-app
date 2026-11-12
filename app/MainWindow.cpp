@@ -110,8 +110,16 @@ MainWindow::MainWindow(PackService* service, const QString& titleSuffix, const Q
         if (tabs_->currentWidget() == compare_) {
             QMap<QString, QString> names;
             for (const Job& j : project_.jobs) names[j.packId] = regionTitle(j.packId);
-            compare_->refresh(project_.jobs, [this](const QString& id) { return bundleFor(id); }, names);
+            compare_->refresh(project_.jobs, [this](const QString& id) { return bundleFor(id); }, names, project_.priorities, project_.baselineId);
         }
+    });
+    connect(compare_, &ComparePage::prioritiesChanged, this, [this](const QVariantMap& p) {
+        project_.priorities = p;
+        markDirty();
+    });
+    connect(compare_, &ComparePage::baselineChanged, this, [this](const QString& id) {
+        project_.baselineId = id;
+        markDirty();
     });
     connect(region_, &RegionPage::continueRequested, this, [this](const QString& id) { onRegionChosen(id); });
     connect(region_, &RegionPage::cancelRequested, this, [this]() { pendingNewJob_ = false; showWorkspace(); });
@@ -406,15 +414,12 @@ void MainWindow::refreshList(int select) {
 void MainWindow::updateListItem(int row) {
     if (row < 0 || row >= project_.jobs.size()) return;
     const Job& j = project_.jobs[row];
+    const JobResult r = evaluateJob(j, [this](const QString& id) { return bundleFor(id); }, QString());
     QString sub = tr("rules not downloaded");
-    if (auto b = bundleFor(j.packId)) {
-        JobOutcome o;
-        std::vector<TraceEntry> t;
-        std::string err;
-        if (evaluate_job(b, inputsFromState(j.state), o, t, err))
-            sub = o.real.total_hours.is_zero() ? QString("–") : tr("%1 real hourly").arg(QString::fromStdString(o.real.real_hourly.to_fixed(2) + " " + b->currency));
-        else
-            sub = tr("check inputs");
+    if (!r.currency.isEmpty()) {
+        if (!r.ok) sub = tr("check inputs");
+        else if (r.notWorking) sub = tr("not working, %1 %2/mo").arg(QLocale().toString(r.monthlyValue, 'f', 0), r.currency);
+        else sub = r.hasHourly ? tr("%1 %2 real hourly").arg(QString::number(r.realHourly, 'f', 2), r.currency) : QStringLiteral("–");
     }
     list_->item(row)->setText(j.name + "\n" + sub);
 }
@@ -424,7 +429,7 @@ void MainWindow::onRowChanged(int row) {
     tabs_->setTabEnabled(0, has);
     if (!has) {
         tabs_->setCurrentWidget(compare_);
-        compare_->refresh(project_.jobs, [this](const QString& id) { return bundleFor(id); }, {});
+        compare_->refresh(project_.jobs, [this](const QString& id) { return bundleFor(id); }, {}, project_.priorities, project_.baselineId);
         return;
     }
     const Job& j = project_.jobs[row];
@@ -433,7 +438,7 @@ void MainWindow::onRowChanged(int row) {
     if (tabs_->currentWidget() == compare_) {
         QMap<QString, QString> names;
         for (const Job& jj : project_.jobs) names[jj.packId] = regionTitle(jj.packId);
-        compare_->refresh(project_.jobs, [this](const QString& id) { return bundleFor(id); }, names);
+        compare_->refresh(project_.jobs, [this](const QString& id) { return bundleFor(id); }, names, project_.priorities, project_.baselineId);
     }
     updateActions();
 }
@@ -543,4 +548,9 @@ void MainWindow::selectJobRow(int row) { list_->setCurrentRow(row); }
 void MainWindow::addJobInRegion(const QString& packId) {
     pendingNewJob_ = true;
     onRegionChosen(packId);
+}
+
+void MainWindow::showCompareSubTab(int sub, int chart) {
+    showCompareTab();
+    compare_->showSubTab(sub, chart);
 }

@@ -9,13 +9,16 @@ pick which jobs to take, so a job file is just a project file with `"kind": "job
   "version": 1,
   "kind": "project",          // "project" or "jobs"; both are read the same way
   "name": "My jobs",
+  "priorities": { "money": 8, "stress": 4 },  // optional: 0-10 weight per criterion (keys in app/JobResult.cpp)
+  "baseline": "uuid",         // optional: id of a not-working entry used as the comparison baseline
   "jobs": [
     {
       "id": "uuid",           // regenerated on import if it collides
       "name": "Warehouse (nights)",
       "notes": "free text",
       "region": "CA-NB-2026", // pack id; the rules come from the user's installed packs
-      "inputs": { "pay": 19.5, "hours": 44, "asof": "2026-11-10", "x.<packInput>": 0 }
+      "inputs": { "kind": 0,      // 0 job, 1 not working (then the nw_* keys apply)
+                  "pay": 19.5, "hours": 44, "asof": "2026-11-10", "x.<packInput>": 0 }
     }
   ]
 }
