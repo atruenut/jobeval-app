@@ -26,6 +26,10 @@ bool compute_real_hourly(const RealHourlyInput& in, RealHourlyResult& out, std::
         error = "days per week cannot exceed 7";
         return false;
     }
+    if (!in.days_per_week.is_zero() && in.hours_per_week > in.days_per_week * Decimal::from_int(24)) {
+        error = "hours per week cannot exceed 24 hours on each day worked";
+        return false;
+    }
     if (in.pension_match_percent > Decimal::from_int(100)) {
         error = "pension match cannot exceed 100%";
         return false;

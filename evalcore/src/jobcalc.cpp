@@ -15,6 +15,10 @@ bool evaluate_job(const std::shared_ptr<const Bundle>& bundle, const JobInputs& 
         error = "shift premium share must be between 0 and 100%";
         return false;
     }
+    if (!in.signing_bonus.is_zero() && in.expected_years.is_zero()) {
+        error = "a signing bonus needs the number of years you expect to stay, to spread it over";
+        return false;
+    }
     JobOutcome o;
     const Decimal hours_paid = in.hours_per_week * in.paid_weeks;
 

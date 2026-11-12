@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0
+- Job list can be ordered: added, newest, name, pay, real hourly, take-home, hours, fit score, region (remembered; the project keeps its own order). Compare columns follow it.
+- What if rebuilt: Scenario tab (pay change, raises over N years, inflation, hours, commute, remote days, bonus, benefits, costs, vacation, side by side with today), Break-even (match a job or your own figure, on top of the scenario), What matters most (one-at-a-time sensitivity), Pay curves.
+- Fix: the unemployment benefit now ends after "Benefit lasts" weeks: year-one tax counts only what is received, and savings runway runs through benefit and post-benefit stages.
+- Checks: hours per week cannot exceed 24 per day worked; a signing bonus needs an expected stay.
+- Job page inputs regrouped: Pay and hours, Overtime, Bonuses and extras, Time off and working from home.
+
 ## 0.3.0
 - Not-working situations (unemployment, student, savings) as first-class entries: benefit from the region pack, runway, time used.
 - Many more job variables: remote days, signing bonus, expected stay, yearly raise, and 0-10 ratings (security, growth, interest, flexibility, culture, stress, learning, location).

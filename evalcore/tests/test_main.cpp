@@ -1021,6 +1021,26 @@ static void test_not_working_and_more() {
         CHECK(evaluate_not_working(nb, in, o, trace, err));
         CHECK_EQ(o.weekly_benefit.to_string(), "400");
 
+        // The benefit ends after 26 weeks: year one taxes only what is received, and the runway
+        // has two phases (6 months of benefit, then other income only).
+        in.prior_earnings_annual = D("20800");
+        in.benefit_weeks = D("26");
+        CHECK(evaluate_not_working(nb, in, o, trace, err));
+        CHECK_EQ(o.taxable_annual.to_string(), "6400");        // 200*26 + 100*12
+        CHECK_EQ(o.net_annual.to_string(), "6360");            // 6400 - 640 + 600
+        CHECK_EQ(o.benefit_months.to_string(), "6");
+        CHECK_EQ(o.net_monthly_during.to_string(), "920");
+        CHECK_EQ(o.net_monthly_after.to_string(), "140");      // (1200 - 120)/12 + 50
+        CHECK_EQ(o.monthly_shortfall.to_string(), "580");
+        CHECK_EQ(o.monthly_shortfall_after.to_string(), "1360");
+        CHECK(!o.runway_unlimited);
+        CHECK_EQ(o.runway_months.to_fixed(3), "7.706");        // 6 + (5800 - 6*580)/1360
+        in.savings = D("2000");                                // runs out inside the benefit period
+        CHECK(evaluate_not_working(nb, in, o, trace, err));
+        CHECK_EQ(o.runway_months.to_fixed(3), "3.448");        // 2000/580
+        in.savings = D("5800");
+        in.benefit_weeks = Decimal();
+
         in.use_unemployment_benefit = false;  // no claim: only the entered income
         CHECK(evaluate_not_working(nb, in, o, trace, err));
         CHECK_EQ(o.weekly_benefit.to_string(), "0");
@@ -1066,6 +1086,14 @@ static void test_not_working_and_more() {
         JobOutcome jo;
         CHECK(evaluate_job(ob, sb, jo, trace, err));
         CHECK_EQ(jo.take_home.gross_annual.to_string(), "43100");
+
+        sb.expected_years = Decimal();  // a signing bonus with no stay to spread it over is an input error
+        CHECK(!evaluate_job(ob, sb, jo, trace, err));
+        JobInputs long_day = job_base();
+        long_day.hours_per_week = D("130");  // more than 24 h on each of 5 days
+        CHECK(!evaluate_job(ob, long_day, jo, trace, err));
+        long_day.hours_per_week = D("120");
+        CHECK(evaluate_job(ob, long_day, jo, trace, err));
 
         // Remote days remove commuting: 5 days, 2 remote -> 156 commute days a year.
         JobInputs rm = job_base();

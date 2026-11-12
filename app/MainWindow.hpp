@@ -13,6 +13,7 @@ class ComparePage;
 class EvaluatePage;
 class PackService;
 class QAction;
+class QComboBox;
 class QListWidget;
 class QMenu;
 class QStackedWidget;
@@ -30,7 +31,9 @@ public:
     void applyStateToCurrent(const QVariantMap& values);
     void showCompareTab();
     void showCompareSubTab(int sub, int chart);
+    void setCompareScenario(const QVariantMap& v);
     void selectJobRow(int row);
+    void setSortMode(int id);
     void addJobInRegion(const QString& packId);
     void showRegionPage(bool forNewJob);
     int jobCount() const { return static_cast<int>(project_.jobs.size()); }
@@ -61,7 +64,10 @@ private:
     void renameJob();
     Job makeJob(const QString& packId) const;
     void refreshList(int select);
-    void updateListItem(int row);
+    void rebuildList(int select, bool notify);   // select is a project index; notify = load it into the editor
+    void updateListItem(int row);                // row is a project index
+    QList<Job> sortedJobs() const;
+    int listRowOf(int projectIndex) const;
     int currentRow() const;
     void onRowChanged(int row);
     void onJobEdited(const QString& name, const QString& notes, const QVariantMap& state);
@@ -90,6 +96,8 @@ private:
     RegionPage* region_;
     QWidget* workspace_;
     QListWidget* list_;
+    QComboBox* sort_;
+    QVector<int> order_;  // list row -> project index (the list can be sorted; the project keeps its order)
     QTabWidget* tabs_;
     EvaluatePage* evaluate_;
     ComparePage* compare_;

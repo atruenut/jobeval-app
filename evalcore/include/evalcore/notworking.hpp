@@ -4,7 +4,10 @@
 //   * other taxable income the user enters (grants that are taxed, part-time work...);
 //   * tax-free income the user enters (family benefits, gifts, loans drawn).
 // Taxes on the taxable part come from the pack, exactly as for a job but with no pension or
-// insurance contributions. Monthly figures treat the situation as lasting a full year for tax.
+// insurance contributions.
+// The benefit lasts `benefit_weeks` (0 = no limit). Year-one figures (`net_annual`) tax what is
+// actually received in twelve months; the runway runs month by month through two phases: while
+// the benefit is paid (income annualised for tax) and after it ends (other income only).
 #pragma once
 
 #include <map>
@@ -35,8 +38,12 @@ struct NotWorkingOutcome {
     Decimal taxable_annual;          // benefit + other taxable income, per year
     TakeHomeResult take_home;        // tax on the taxable part (gross pay is zero)
     Decimal net_annual;              // taxable after tax + tax-free income
-    Decimal net_monthly;
-    Decimal monthly_shortfall;       // expenses beyond income, 0 if income covers them
+    Decimal net_monthly;             // year-one average: net_annual / 12
+    Decimal net_monthly_during;      // while the benefit is being paid (taxed as a full year of it)
+    Decimal net_monthly_after;       // once it has ended (other income only); equals `during` if it never ends
+    Decimal benefit_months;          // how long the benefit is paid, 0 = not limited or not used
+    Decimal monthly_shortfall;       // expenses beyond income while the benefit is paid, 0 if covered
+    Decimal monthly_shortfall_after; // the same after it ends
     bool runway_unlimited = true;    // income covers expenses (or none were given)
     Decimal runway_months;           // savings / shortfall when there is a shortfall
     Decimal activity_hours_year;

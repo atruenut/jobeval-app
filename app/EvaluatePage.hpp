@@ -76,6 +76,8 @@ private:
     QComboBox* kind_;
     QMap<QString, QSlider*> sliders_;
     QGroupBox* payBox_;
+    QGroupBox* extraPayBox_;
+    QGroupBox* offBox_;
     QGroupBox* goBox_;
     QGroupBox* costBox_;
     QGroupBox* nwBox_;
