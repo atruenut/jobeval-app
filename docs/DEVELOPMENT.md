@@ -17,6 +17,15 @@ Newest first. Keep this current: one entry per merged milestone or notable decis
 
 ## Log
 
+### 2026-11-12 (night) — US federal pack
+- US-2026 added in jobeval-data (PR #6): single filer, standard deduction 16,100, seven brackets
+  (IRS Rev. Proc. 2025-32 release), Social Security 6.2% to 184,500, Medicare 1.45%, Additional
+  Medicare 0.9% over 200,000 (IRS Topic 751), FLSA overtime after 40 h at 1.5x (DOL Fact Sheet 23).
+  No engine change. `taxable_income` is federal taxable income, the hook state packs will use.
+- Not modelled: other filing statuses, credits, itemizing, the 2025-2028 overtime/tips deductions,
+  all state/local tax, state unemployment benefits. Next: state packs (verify each from the state's
+  revenue department; no-tax states are the easy start), then a filing-status input.
+
 ### 2026-11-12 (night) — PEI pack
 - CA-PE-2026 added in jobeval-data (PR #5). The "footnote" worry was unfounded: CRA T4032PE and EY
   agree on 142,250 / KP 6,460 (the PEI finance page prints 142,520, apparently a typo; both values
