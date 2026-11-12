@@ -45,6 +45,8 @@ int main(int argc, char** argv) {
     cli.addOption({"demo", "Developer: start a new project with one job in this pack id.", "packId"});
     cli.addOption({"job", "Developer: select this job number (1-based).", "n"});
     cli.addOption({"tab", "Developer: show this tab (compare).", "name"});
+    cli.addOption({"scenario", "Developer: What-if values, key=value (pay, raise, years, hours, ...).", "kv"});
+    cli.addOption({"sort", "Developer: job list sort mode (0-10).", "n"});
     cli.addOption({"subtab", "Developer: Compare sub-tab index (0-3).", "n"});
     cli.addOption({"chart", "Developer: Charts view index (0-4).", "n"});
     cli.addOption({"session-file", "Developer: use this autosave file.", "file"});
@@ -88,6 +90,16 @@ int main(int argc, char** argv) {
         }
         w.applyStateToCurrent(m);
     }
+    if (cli.isSet("scenario")) {
+        QVariantMap m;
+        for (const QString& kv : cli.values("scenario")) {
+            const int eq = kv.indexOf('=');
+            if (eq > 0) m[kv.left(eq)] = kv.mid(eq + 1).toDouble();
+        }
+        w.showCompareSubTab(3, 0);
+        w.setCompareScenario(m);
+    }
+    if (cli.isSet("sort")) w.setSortMode(cli.value("sort").toInt());
     if (cli.isSet("job")) w.selectJobRow(cli.value("job").toInt() - 1);
     if (cli.value("tab") == "compare") w.showCompareTab();
     if (cli.isSet("subtab")) w.showCompareSubTab(cli.value("subtab").toInt(), cli.isSet("chart") ? cli.value("chart").toInt() : 0);

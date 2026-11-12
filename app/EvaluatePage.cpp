@@ -196,16 +196,7 @@ EvaluatePage::EvaluatePage(QWidget* parent) : QWidget(parent) {
     addField(payForm_, "pay", tr("Pay"), Unit::PerHour, tr("Your hourly wage, or your yearly salary, before tax."));
     addField(payForm_, "hours", tr("Hours per week"), Unit::Hours, tr("Paid hours in a normal week, including overtime you usually work."));
     addField(payForm_, "weeks", tr("Paid weeks per year"), Unit::Weeks, tr("52 for a year-round job. Fewer for seasonal or part-year work."));
-    addField(payForm_, "vacation", tr("…of which paid vacation"), Unit::Weeks, tr("Weeks you are paid but do not work. No commute, no hours worked."));
-    addField(payForm_, "daysoff", tr("Other paid days off"), Unit::Days, tr("Statutory holidays and paid sick days per year that you are paid for but do not work."));
     addField(payForm_, "days", tr("Days worked per week"), Unit::Days, tr("Used to count commutes and trips."));
-    addField(payForm_, "bonus", tr("Bonus / commission"), Unit::PerYear, tr("Expected yearly bonus, profit share or commission. Taxed as ordinary pay."));
-    addField(payForm_, "remote", tr("Days worked from home"), Unit::Days, tr("Of your days worked each week, how many are remote. Remote days have no commute, parking or fare."));
-    addField(payForm_, "signing", tr("Signing bonus"), Unit::Money, tr("One-off payment for joining. Spread over how long you expect to stay."));
-    addField(payForm_, "stay", tr("Expected time in the job"), Unit::Years, tr("Used to spread a signing bonus across the years you expect to stay."));
-    addField(payForm_, "raise", tr("Expected raise per year"), Unit::PercentYear, tr("Used for the outlook view in Compare. It does not change today's figures."));
-    addField(payForm_, "premium", tr("Shift premium"), Unit::PerHour, tr("Extra pay per hour on evenings, nights, weekends or hazardous work."));
-    addField(payForm_, "premshare", tr("…applies to"), Unit::Percent, tr("Share of your hours the shift premium applies to."));
     left->addWidget(payBox_);
 
     otBox_ = new QGroupBox(tr("Overtime"));
@@ -222,6 +213,29 @@ EvaluatePage::EvaluatePage(QWidget* parent) : QWidget(parent) {
     otForm_->addRow(otLegal_);
     addField(otForm_, "otthr", tr("Company overtime starts after"), Unit::Hours, tr("Weekly hours after which the company overtime rate applies."));
     left->addWidget(otBox_);
+
+    extraPayBox_ = new QGroupBox(tr("Bonuses and extras"));
+    auto* extrasV = new QVBoxLayout(extraPayBox_);
+    extrasV->addWidget(note(tr("Pay on top of the wage or salary.")));
+    auto* extrasForm = new QFormLayout;
+    extrasV->addLayout(extrasForm);
+    addField(extrasForm, "bonus", tr("Bonus / commission"), Unit::PerYear, tr("Expected yearly bonus, profit share or commission. Taxed as ordinary pay."));
+    addField(extrasForm, "signing", tr("Signing bonus"), Unit::Money, tr("One-off payment for joining. Spread over how long you expect to stay."));
+    addField(extrasForm, "stay", tr("Expected time in the job"), Unit::Years, tr("Used to spread a signing bonus across the years you expect to stay."));
+    addField(extrasForm, "raise", tr("Expected raise per year"), Unit::PercentYear, tr("Where the What if tab in Compare starts its raise assumption. It does not change today's figures."));
+    addField(extrasForm, "premium", tr("Shift premium"), Unit::PerHour, tr("Extra pay per hour on evenings, nights, weekends or hazardous work."));
+    addField(extrasForm, "premshare", tr("…applies to"), Unit::Percent, tr("Share of your hours the shift premium applies to."));
+    left->addWidget(extraPayBox_);
+
+    offBox_ = new QGroupBox(tr("Time off and working from home"));
+    auto* offV = new QVBoxLayout(offBox_);
+    offV->addWidget(note(tr("Paid time you do not work, and days you work without commuting.")));
+    auto* offForm = new QFormLayout;
+    offV->addLayout(offForm);
+    addField(offForm, "vacation", tr("Paid vacation"), Unit::Weeks, tr("Weeks you are paid but do not work (part of your paid weeks per year). No commute, no hours worked."));
+    addField(offForm, "daysoff", tr("Other paid days off"), Unit::Days, tr("Statutory holidays and paid sick days per year that you are paid for but do not work."));
+    addField(offForm, "remote", tr("Days worked from home"), Unit::Days, tr("Of your days worked each week, how many are remote. Remote days have no commute, parking or fare."));
+    left->addWidget(offBox_);
 
     goBox_ = new QGroupBox(tr("Getting there"));
     auto* goV = new QVBoxLayout(goBox_);
@@ -266,7 +280,7 @@ EvaluatePage::EvaluatePage(QWidget* parent) : QWidget(parent) {
     nwEi_ = new QCheckBox(tr("Claim the region's unemployment benefit"));
     nwForm->addRow(nwEi_);
     addField(nwForm, "nw_prior", tr("Earnings before the claim"), Unit::PerYear, tr("What you earned before losing work. The benefit is a share of it, up to a cap set by the region."));
-    addField(nwForm, "nw_weeks", tr("Benefit lasts"), Unit::Weeks, tr("For your reference: how long you expect to be paid. Duration depends on your region's unemployment rate and your hours worked; see your government's website. 0 = not limited."));
+    addField(nwForm, "nw_weeks", tr("Benefit lasts"), Unit::Weeks, tr("How long you expect to be paid. Used for the savings runway and for the tax on year one. Duration depends on your region's unemployment rate and your hours worked; see your government's website. 0 = not limited."));
     addField(nwForm, "nw_taxable", tr("Other taxable income"), Unit::PerMonth, tr("Taxable grants, scholarships, part-time work, interest."));
     addField(nwForm, "nw_taxfree", tr("Tax-free income"), Unit::PerMonth, tr("Child benefits, gifts, loans or lines of credit you draw on, tax-free awards."));
     addField(nwForm, "nw_expenses", tr("Living costs"), Unit::PerMonth, tr("What you spend each month while living this way. Used for how long savings last."));
@@ -440,6 +454,8 @@ void EvaluatePage::applyUnits() {
 void EvaluatePage::updateVisibility() {
     const bool nw = kind_->currentIndex() == 1;
     payBox_->setVisible(!nw);
+    extraPayBox_->setVisible(!nw);
+    offBox_->setVisible(!nw);
     goBox_->setVisible(!nw);
     costBox_->setVisible(!nw);
     nwBox_->setVisible(nw);
@@ -645,7 +661,13 @@ void EvaluatePage::recalcNotWorking() {
     std::vector<Row> trows;
     trows.push_back({tr("Time this situation uses"), num(o.activity_hours_year), num(in.activity_hours_per_week), true, 0});
     fillTable(time_, trows);
-    nwNote_->setText(tr("Monthly figures assume the situation lasts a full year for tax purposes."));
+    if (o.benefit_months > Decimal() ) {
+        nwNote_->setText(tr("Year-one figures tax only what you receive in twelve months. While the benefit is paid (%1 months) you have about %2 a month; after it ends, %3 a month. Savings last %4 through both stages.")
+                             .arg(QString::fromStdString(o.benefit_months.to_fixed(1)), money(o.net_monthly_during), money(o.net_monthly_after),
+                                  o.runway_unlimited ? tr("indefinitely") : tr("%1 months").arg(QString::fromStdString(o.runway_months.to_fixed(1)))));
+    } else {
+        nwNote_->setText(tr("Monthly figures assume this income continues all year (no end date for the benefit entered)."));
+    }
 
     QString text;
     for (const auto& t : trace) {

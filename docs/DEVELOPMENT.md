@@ -17,6 +17,20 @@ Newest first. Keep this current: one entry per merged milestone or notable decis
 
 ## Log
 
+### 2026-11-12 (later) — M7 consistency audit, sorting, what-if controls
+- Audit of the money/time chain found: (1) `benefit_weeks` was collected but never used, so a 26-week
+  benefit was taxed and budgeted as a full year. `evaluate_not_working` now taxes year one on what is
+  actually received and runs the runway in two stages (benefit, then other income only).
+  (2) hours above 24 per working day and a signing bonus with no expected stay were silently accepted;
+  both are now input errors. Confirmed consistent: hours "per week" are averaged over paid weeks
+  everywhere; paid vacation adds pay but no hours; commute scales with days actually commuted.
+- Baseline comparison uses year-one net income of the not-working entry (living costs are common to both
+  sides and are left out).
+- Job list sorting is a view (`MainWindow::order_`); the project order never changes. Pay sorts by
+  hourly-equivalent wage; not-working entries sort last for pay/hourly keys.
+- What if: `applyScenario()` in ComparePage.cpp applies the changes to `JobInputs`; break-even solves
+  for pay on top of them. Dev flag: `--scenario key=value`.
+
 ### 2026-11-12 — M6 not working, more variables, advanced compare
 - Engine: `notworking` (benefit from the pack slot `unemployment_weekly_benefit`, runway), `scoring`
   (weighted fit 0-100, 0-10 scales), overtime tiers, remote days, signing bonus. 372 checks.

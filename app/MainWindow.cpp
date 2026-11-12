@@ -2,6 +2,7 @@
 
 #include <QAction>
 #include <QCloseEvent>
+#include <QComboBox>
 #include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -47,6 +48,20 @@ MainWindow::MainWindow(PackService* service, const QString& titleSuffix, const Q
     auto* hdr = new QLabel(tr("Jobs"));
     hdr->setObjectName("sectionTitle");
     sv->addWidget(hdr);
+    sort_ = new QComboBox;
+    sort_->setToolTip(tr("How the job list is ordered. This only changes the list and the Compare columns, not your project."));
+    struct SortItem { const char* label; int id; };
+    for (const SortItem& it : {SortItem{QT_TR_NOOP("Order added"), 0}, SortItem{QT_TR_NOOP("Newest first"), 1}, SortItem{QT_TR_NOOP("Name A to Z"), 2},
+                               SortItem{QT_TR_NOOP("Name Z to A"), 3}, SortItem{QT_TR_NOOP("Pay, highest first"), 4}, SortItem{QT_TR_NOOP("Pay, lowest first"), 5},
+                               SortItem{QT_TR_NOOP("Real hourly, best first"), 6}, SortItem{QT_TR_NOOP("Take-home per month, highest"), 7},
+                               SortItem{QT_TR_NOOP("Hours per week, fewest first"), 8}, SortItem{QT_TR_NOOP("Fit score, best first"), 9},
+                               SortItem{QT_TR_NOOP("Region"), 10}})
+        sort_->addItem(tr(it.label), it.id);
+    {
+        const int i = sort_->findData(QSettings().value("jobSort", 0).toInt());
+        sort_->setCurrentIndex(i >= 0 ? i : 0);
+    }
+    sv->addWidget(sort_);
     list_ = new QListWidget;
     list_->setObjectName("jobList");
     sv->addWidget(list_, 1);
@@ -104,18 +119,24 @@ MainWindow::MainWindow(PackService* service, const QString& titleSuffix, const Q
 
     // ---- wiring
     connect(add, &QPushButton::clicked, this, [this]() { addJob(); });
+    connect(sort_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
+        QSettings().setValue("jobSort", sort_->currentData().toInt());
+        rebuildList(currentRow(), false);
+        if (tabs_->currentWidget() == compare_) onRowChanged(list_->currentRow());
+    });
     connect(list_, &QListWidget::currentRowChanged, this, [this](int r) { onRowChanged(r); });
     connect(list_, &QListWidget::itemDoubleClicked, this, [this]() { renameJob(); });
     connect(tabs_, &QTabWidget::currentChanged, this, [this](int) {
         if (tabs_->currentWidget() == compare_) {
             QMap<QString, QString> names;
             for (const Job& j : project_.jobs) names[j.packId] = regionTitle(j.packId);
-            compare_->refresh(project_.jobs, [this](const QString& id) { return bundleFor(id); }, names, project_.priorities, project_.baselineId);
+            compare_->refresh(sortedJobs(), [this](const QString& id) { return bundleFor(id); }, names, project_.priorities, project_.baselineId);
         }
     });
     connect(compare_, &ComparePage::prioritiesChanged, this, [this](const QVariantMap& p) {
         project_.priorities = p;
         markDirty();
+        if (sort_->currentData().toInt() == 9) rebuildList(currentRow(), false);
     });
     connect(compare_, &ComparePage::baselineChanged, this, [this](const QString& id) {
         project_.baselineId = id;
@@ -336,7 +357,19 @@ void MainWindow::exportJobs() {
 
 // ---------------------------------------------------------------- jobs
 
-int MainWindow::currentRow() const { return list_->currentRow(); }
+int MainWindow::currentRow() const {
+    const int r = list_->currentRow();
+    return r >= 0 && r < order_.size() ? order_[r] : -1;
+}
+
+int MainWindow::listRowOf(int projectIndex) const { return order_.indexOf(projectIndex); }
+
+QList<Job> MainWindow::sortedJobs() const {
+    QList<Job> out;
+    if (order_.size() != project_.jobs.size()) return project_.jobs;
+    for (int i : order_) out.append(project_.jobs[i]);
+    return out;
+}
 
 Job MainWindow::makeJob(const QString& packId) const {
     Job j;
@@ -401,35 +434,77 @@ void MainWindow::renameJob() {
     evaluate_->setJobName(project_.jobs[r].name);
 }
 
-void MainWindow::refreshList(int select) {
-    QSignalBlocker b(list_);
-    list_->clear();
-    for (int i = 0; i < project_.jobs.size(); ++i) list_->addItem(new QListWidgetItem);
-    for (int i = 0; i < project_.jobs.size(); ++i) updateListItem(i);
-    b.unblock();
-    list_->setCurrentRow(select);
-    onRowChanged(select);
-}
+void MainWindow::refreshList(int select) { rebuildList(select, true); }
 
-void MainWindow::updateListItem(int row) {
-    if (row < 0 || row >= project_.jobs.size()) return;
-    const Job& j = project_.jobs[row];
-    const JobResult r = evaluateJob(j, [this](const QString& id) { return bundleFor(id); }, QString());
-    QString sub = tr("rules not downloaded");
-    if (!r.currency.isEmpty()) {
-        if (!r.ok) sub = tr("check inputs");
-        else if (r.notWorking) sub = tr("not working, %1 %2/mo").arg(QLocale().toString(r.monthlyValue, 'f', 0), r.currency);
-        else sub = r.hasHourly ? tr("%1 %2 real hourly").arg(QString::number(r.realHourly, 'f', 2), r.currency) : QStringLiteral("–");
+void MainWindow::rebuildList(int select, bool notify) {
+    const int n = static_cast<int>(project_.jobs.size());
+    auto lookup = [this](const QString& id) { return bundleFor(id); };
+    QList<JobResult> results;
+    for (const Job& j : project_.jobs) results.append(evaluateJob(j, lookup, QString()));
+    scoreResults(results, project_.priorities);
+
+    // Sort keys: {has value, value}; jobs without one (not-working entries for pay, failures) go last.
+    const int mode = sort_->currentData().toInt();
+    auto key = [&](int i, double& v) {
+        const JobResult& r = results[i];
+        switch (mode) {
+            case 4: case 5: if (!r.ok || r.notWorking) return false; v = r.emp.hourly_wage.to_double(); return true;
+            case 6: if (!r.ok || !r.hasHourly) return false; v = r.realHourly; return true;
+            case 7: if (!r.ok) return false; v = r.notWorking ? r.nw.net_monthly.to_double() : r.emp.take_home.net_monthly.to_double(); return true;
+            case 8: if (!r.ok) return false; v = r.hoursPerWeek; return true;
+            case 9: if (!r.ok || !r.hasFit) return false; v = r.fit; return true;
+            default: return false;
+        }
+    };
+    order_.clear();
+    for (int i = 0; i < n; ++i) order_.append(i);
+    if (mode == 1) std::reverse(order_.begin(), order_.end());
+    else if (mode == 2 || mode == 3 || mode == 10) {
+        std::stable_sort(order_.begin(), order_.end(), [&](int a, int b) {
+            const int c = mode == 10 ? regionTitle(project_.jobs[a].packId).localeAwareCompare(regionTitle(project_.jobs[b].packId))
+                                     : project_.jobs[a].name.localeAwareCompare(project_.jobs[b].name);
+            return mode == 3 ? c > 0 : c < 0;
+        });
+    } else if (mode >= 4) {
+        const bool ascending = mode == 5 || mode == 8;
+        std::stable_sort(order_.begin(), order_.end(), [&](int a, int b) {
+            double va = 0, vb = 0;
+            const bool ha = key(a, va), hb = key(b, vb);
+            if (ha != hb) return ha;
+            if (!ha) return false;
+            return ascending ? va < vb : va > vb;
+        });
     }
-    list_->item(row)->setText(j.name + "\n" + sub);
+
+    QSignalBlocker blocker(list_);
+    list_->clear();
+    for (int i : order_) {
+        const JobResult& r = results[i];
+        QString sub = tr("rules not downloaded");
+        if (!r.currency.isEmpty()) {
+            if (!r.ok) sub = tr("check inputs");
+            else if (r.notWorking) sub = tr("not working, %1 %2/mo").arg(QLocale().toString(r.monthlyValue, 'f', 0), r.currency);
+            else sub = r.hasHourly ? tr("%1 %2 real hourly").arg(QString::number(r.realHourly, 'f', 2), r.currency) : QStringLiteral("–");
+        }
+        list_->addItem(project_.jobs[i].name + "\n" + sub);
+    }
+    blocker.unblock();
+    const int row = listRowOf(select);
+    QSignalBlocker again(list_);
+    list_->setCurrentRow(row);
+    again.unblock();
+    if (notify) onRowChanged(row);
 }
 
-void MainWindow::onRowChanged(int row) {
+void MainWindow::updateListItem(int) { rebuildList(currentRow(), false); }
+
+void MainWindow::onRowChanged(int listRow) {
+    const int row = listRow >= 0 && listRow < order_.size() ? order_[listRow] : -1;
     const bool has = row >= 0 && row < project_.jobs.size();
     tabs_->setTabEnabled(0, has);
     if (!has) {
         tabs_->setCurrentWidget(compare_);
-        compare_->refresh(project_.jobs, [this](const QString& id) { return bundleFor(id); }, {}, project_.priorities, project_.baselineId);
+        compare_->refresh(sortedJobs(), [this](const QString& id) { return bundleFor(id); }, {}, project_.priorities, project_.baselineId);
         return;
     }
     const Job& j = project_.jobs[row];
@@ -438,7 +513,7 @@ void MainWindow::onRowChanged(int row) {
     if (tabs_->currentWidget() == compare_) {
         QMap<QString, QString> names;
         for (const Job& jj : project_.jobs) names[jj.packId] = regionTitle(jj.packId);
-        compare_->refresh(project_.jobs, [this](const QString& id) { return bundleFor(id); }, names, project_.priorities, project_.baselineId);
+        compare_->refresh(sortedJobs(), [this](const QString& id) { return bundleFor(id); }, names, project_.priorities, project_.baselineId);
     }
     updateActions();
 }
@@ -543,7 +618,7 @@ void MainWindow::applyStateToCurrent(const QVariantMap& values) {
 
 void MainWindow::showCompareTab() { tabs_->setCurrentWidget(compare_); }
 
-void MainWindow::selectJobRow(int row) { list_->setCurrentRow(row); }
+void MainWindow::selectJobRow(int row) { list_->setCurrentRow(listRowOf(row)); }
 
 void MainWindow::addJobInRegion(const QString& packId) {
     pendingNewJob_ = true;
@@ -554,3 +629,10 @@ void MainWindow::showCompareSubTab(int sub, int chart) {
     showCompareTab();
     compare_->showSubTab(sub, chart);
 }
+
+void MainWindow::setSortMode(int id) {
+    const int i = sort_->findData(id);
+    if (i >= 0) sort_->setCurrentIndex(i);
+}
+
+void MainWindow::setCompareScenario(const QVariantMap& v) { compare_->setScenario(v); }

@@ -11,6 +11,7 @@
 
 class QLabel;
 class QComboBox;
+class QDoubleSpinBox;
 class QSlider;
 class QSpinBox;
 class QTableWidget;
@@ -27,7 +28,8 @@ public:
     void refresh(const QList<Job>& jobs, const BundleLookup& lookup, const QMap<QString, QString>& regionNames,
                  const QVariantMap& priorities, const QString& baselineId);
 
-    void showSubTab(int sub, int chart);  // developer/screenshot aid
+    void showSubTab(int sub, int chart);
+    void setScenario(const QVariantMap& values);  // developer aid: pay, raise, years, inflation, hours, commute, remote, bonus, benefits, costs, vacation  // developer/screenshot aid
 
 Q_SIGNALS:
     void prioritiesChanged(const QVariantMap& priorities);
@@ -37,6 +39,7 @@ private:
     void rebuild();          // recompute scores and redraw everything from jobs_/priorities_
     void buildOverview();
     void buildWhatIf();
+    void loadScenarioDefaults();
     void onPriorityEdited();
 
     QList<Job> jobs_;
@@ -64,11 +67,16 @@ private:
     QMap<QString, QLabel*> sliderValues_;
     ChartWidget* fitChart_;
     QLabel* fitText_;
-    // what-if
+    // what if
     QComboBox* adjustJob_;
     QComboBox* matchJob_;
+    QTabWidget* whatTabs_;
+    QDoubleSpinBox *sPay_, *sRaise_, *sYears_, *sInflation_, *sHours_, *sCommute_, *sRemote_, *sBonus_, *sBenefits_, *sCosts_, *sVacation_;
+    QDoubleSpinBox* target_;
+    QLabel* scenarioText_;
+    QTableWidget* scenarioTable_;
     QLabel* breakEven_;
-    QSpinBox* years_;
-    QLabel* futureText_;
+    QTableWidget* sensTable_;
     ChartWidget* curveChart_;
+    bool firstLoad_ = true;
 };
