@@ -23,6 +23,8 @@ struct Project {
     QList<Job> jobs;
     QVariantMap priorities;  // criterion key -> importance 0..10 (see criteria() in JobResult.hpp)
     QString baselineId;      // a not-working job that Compare measures jobs against ("" = none)
+    QString homeCurrency;    // Compare converts other currencies into this one ("" = automatic)
+    QVariantMap rates;       // currency code -> how many units of homeCurrency one unit is worth (typed by the person)
 };
 
 struct FieldSpec {

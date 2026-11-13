@@ -83,13 +83,27 @@ JobResult evaluateJob(const Job& job, const BundleLookup& lookup, const QString&
     return r;
 }
 
+void applyRates(QList<JobResult>& results, const QString& home, const QVariantMap& rates) {
+    for (JobResult& r : results) {
+        r.fx = 1.0;
+        r.group = r.currency;
+        if (home.isEmpty() || r.currency.isEmpty() || r.currency == home) continue;
+        const double rate = rates.value(r.currency).toDouble();
+        if (rate > 0) {
+            r.fx = rate;
+            r.group = home;
+        }
+    }
+}
+
 void scoreResults(QList<JobResult>& results, const QVariantMap& priorities) {
     const QVariantMap prio = normalizedPriorities(priorities);
     QMap<QString, double> bestMoney, bestHourly;
     for (const JobResult& r : results) {
         if (!r.ok) continue;
-        bestMoney[r.currency] = std::max(bestMoney.value(r.currency, 0.0), r.monthlyValue);
-        if (r.hasHourly) bestHourly[r.currency] = std::max(bestHourly.value(r.currency, 0.0), r.realHourly);
+        const QString g = r.group.isEmpty() ? r.currency : r.group;
+        bestMoney[g] = std::max(bestMoney.value(g, 0.0), r.monthlyValue * r.fx);
+        if (r.hasHourly) bestHourly[g] = std::max(bestHourly.value(g, 0.0), r.realHourly * r.fx);
     }
     auto D = [](double v) { return Decimal::parse(QString::number(v, 'f', 6).toStdString()); };
     std::map<std::string, Decimal> weights;
@@ -106,8 +120,9 @@ void scoreResults(QList<JobResult>& results, const QVariantMap& priorities) {
             r.scores[key] = v;
             sc[key.toStdString()] = D(v);
         };
-        put("money", scale_score(D(r.monthlyValue), Decimal(), D(bestMoney.value(r.currency))).to_double());
-        if (r.hasHourly) put("hourly", scale_score(D(r.realHourly), Decimal(), D(bestHourly.value(r.currency))).to_double());
+        const QString g = r.group.isEmpty() ? r.currency : r.group;
+        put("money", scale_score(D(r.monthlyValue * r.fx), Decimal(), D(bestMoney.value(g))).to_double());
+        if (r.hasHourly) put("hourly", scale_score(D(r.realHourly * r.fx), Decimal(), D(bestHourly.value(g))).to_double());
         put("time", scale_score(D(r.hoursPerWeek), Decimal::from_int(60), Decimal()).to_double());
         for (const Criterion& c : criteria())
             if (!c.computed) put(c.key, r.job.state.value(c.stateKey, 5.0).toDouble());

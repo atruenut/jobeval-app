@@ -66,6 +66,45 @@ private Q_SLOTS:
         QCOMPARE(q.jobs[0].state, a.state);
     }
 
+    void currenciesRoundTrip() {
+        Project p;
+        p.homeCurrency = "CAD";
+        p.rates = {{"USD", 1.37}, {"GBP", 1.82}};
+        Project q;
+        QString err;
+        QVERIFY2(projectFromJson(projectToJson(p, "project"), q, err), qPrintable(err));
+        QCOMPARE(q.homeCurrency, QString("CAD"));
+        QCOMPARE(q.rates.value("USD").toDouble(), 1.37);
+        QCOMPARE(q.rates.value("GBP").toDouble(), 1.82);
+    }
+
+    void ratesLetCurrenciesCompete() {
+        auto mk = [](const char* id, const char* cur, double monthly) {
+            JobResult r;
+            r.job.id = id;
+            r.job.state = defaultState();
+            r.ok = true;
+            r.currency = cur;
+            r.monthlyValue = monthly;
+            return r;
+        };
+        QList<JobResult> rs = {mk("a", "CAD", 3000), mk("b", "USD", 2000), mk("c", "GBP", 1000)};
+        QVariantMap w;
+        for (const Criterion& c : criteria()) w[c.key] = 0;
+        w["money"] = 1;
+        // USD converted at 1.5 -> 3000 CAD-equivalent; GBP has no rate and stays alone.
+        applyRates(rs, "CAD", {{"USD", 1.5}});
+        QCOMPARE(rs[1].group, QString("CAD"));
+        QCOMPARE(rs[2].group, QString("GBP"));
+        scoreResults(rs, w);
+        QCOMPARE(rs[0].scores["money"], 10.0);
+        QCOMPARE(rs[1].scores["money"], 10.0);  // ties with a after conversion
+        QCOMPARE(rs[2].scores["money"], 10.0);  // alone
+        applyRates(rs, "CAD", {{"USD", 0.75}});  // now worth 1500
+        scoreResults(rs, w);
+        QCOMPARE(rs[1].scores["money"], 5.0);
+    }
+
     void fileRoundTrip() {
         QTemporaryDir dir;
         Project p;

@@ -130,11 +130,17 @@ MainWindow::MainWindow(PackService* service, const QString& titleSuffix, const Q
         if (tabs_->currentWidget() == compare_) {
             QMap<QString, QString> names;
             for (const Job& j : project_.jobs) names[j.packId] = regionTitle(j.packId);
-            compare_->refresh(sortedJobs(), [this](const QString& id) { return bundleFor(id); }, names, project_.priorities, project_.baselineId);
+            compare_->refresh(sortedJobs(), [this](const QString& id) { return bundleFor(id); }, names, project_.priorities, project_.baselineId, project_.homeCurrency, project_.rates);
         }
     });
     connect(compare_, &ComparePage::prioritiesChanged, this, [this](const QVariantMap& p) {
         project_.priorities = p;
+        markDirty();
+        if (sort_->currentData().toInt() == 9) rebuildList(currentRow(), false);
+    });
+    connect(compare_, &ComparePage::currenciesChanged, this, [this](const QString& home, const QVariantMap& rates) {
+        project_.homeCurrency = home;
+        project_.rates = rates;
         markDirty();
         if (sort_->currentData().toInt() == 9) rebuildList(currentRow(), false);
     });
@@ -441,6 +447,7 @@ void MainWindow::rebuildList(int select, bool notify) {
     auto lookup = [this](const QString& id) { return bundleFor(id); };
     QList<JobResult> results;
     for (const Job& j : project_.jobs) results.append(evaluateJob(j, lookup, QString()));
+    applyRates(results, project_.homeCurrency, project_.rates);
     scoreResults(results, project_.priorities);
 
     // Jobs without a value for the chosen key (not-working entries for pay, failures) go last.
@@ -474,7 +481,7 @@ void MainWindow::onRowChanged(int listRow) {
     tabs_->setTabEnabled(0, has);
     if (!has) {
         tabs_->setCurrentWidget(compare_);
-        compare_->refresh(sortedJobs(), [this](const QString& id) { return bundleFor(id); }, {}, project_.priorities, project_.baselineId);
+        compare_->refresh(sortedJobs(), [this](const QString& id) { return bundleFor(id); }, {}, project_.priorities, project_.baselineId, project_.homeCurrency, project_.rates);
         return;
     }
     const Job& j = project_.jobs[row];
@@ -483,7 +490,7 @@ void MainWindow::onRowChanged(int listRow) {
     if (tabs_->currentWidget() == compare_) {
         QMap<QString, QString> names;
         for (const Job& jj : project_.jobs) names[jj.packId] = regionTitle(jj.packId);
-        compare_->refresh(sortedJobs(), [this](const QString& id) { return bundleFor(id); }, names, project_.priorities, project_.baselineId);
+        compare_->refresh(sortedJobs(), [this](const QString& id) { return bundleFor(id); }, names, project_.priorities, project_.baselineId, project_.homeCurrency, project_.rates);
     }
     updateActions();
 }

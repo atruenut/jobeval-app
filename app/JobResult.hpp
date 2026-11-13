@@ -27,6 +27,8 @@ struct JobResult {
     double fit = 0;                // 0..100 (filled by scoreResults)
     bool hasFit = false;
     QColor color;
+    double fx = 1.0;               // multiply money by this to express it in `group` (see applyRates)
+    QString group;                 // currency this result is compared in (its own, or the home currency)
 };
 
 // A decision criterion. "computed" ones come from the numbers, the rest from the job's 0-10 ratings.
@@ -45,6 +47,11 @@ QVariantMap normalizedPriorities(const QVariantMap& saved);
 using BundleLookup = std::function<std::shared_ptr<const jobeval::Bundle>(const QString& packId)>;
 
 JobResult evaluateJob(const Job& job, const BundleLookup& lookup, const QString& regionName);
+
+// Decides in which currency each result is compared. A result in a currency other than `home` joins the
+// home group only when the person typed a rate for it (units of home per unit of its currency); otherwise it
+// stays in its own group and is never ranked against the others.
+void applyRates(QList<JobResult>& results, const QString& home, const QVariantMap& rates);
 
 // Fills in per-criterion scores and the weighted fit. Money and hourly are scored relative to the best
 // in the same currency (the best earns 10), free time on an absolute scale (0 h/week = 10, 60 h = 0).

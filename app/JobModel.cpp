@@ -192,6 +192,14 @@ QByteArray projectToJson(const Project& p, const QString& kind) {
     for (auto it = p.priorities.begin(); it != p.priorities.end(); ++it) pr[it.key()] = it.value().toDouble();
     if (!pr.isEmpty()) root["priorities"] = pr;
     if (!p.baselineId.isEmpty()) root["baseline"] = p.baselineId;
+    if (!p.homeCurrency.isEmpty() || !p.rates.isEmpty()) {
+        QJsonObject cur, rates;
+        cur["home"] = p.homeCurrency;
+        for (auto it = p.rates.begin(); it != p.rates.end(); ++it)
+            if (it.value().toDouble() > 0) rates[it.key()] = it.value().toDouble();
+        cur["rates"] = rates;
+        root["currencies"] = cur;
+    }
     return QJsonDocument(root).toJson(QJsonDocument::Indented);
 }
 
@@ -236,6 +244,15 @@ bool projectFromJson(const QByteArray& json, Project& out, QString& error) {
         if (v >= 0 && v <= 10) p.priorities[it.key()] = v;
     }
     p.baselineId = root["baseline"].toString();
+    {
+        const QJsonObject cur = root["currencies"].toObject();
+        p.homeCurrency = cur["home"].toString();
+        const QJsonObject rates = cur["rates"].toObject();
+        for (auto it = rates.begin(); it != rates.end(); ++it) {
+            const double v = it.value().toDouble(0);
+            if (v > 0 && v < 1e6) p.rates[it.key()] = v;
+        }
+    }
     out = p;
     return true;
 }
