@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.0
+- Engine 1.1: packs can declare pick-one inputs (`type: choice` with numeric options); the app shows them as drop-downs in the Region-specific box. Documented in jobeval-data `docs/PACK_SPEC.md`.
+- Data: United States (federal income tax, Social Security, Medicare, overtime) with a filing-status choice (single, married filing jointly, head of household), plus first state packs (nine no-wage-tax states, Pennsylvania, Illinois). Needs this version or newer for the US pack.
+
 ## 0.5.0
 - Region list now covers ten more Canadian provinces and territories (data packs only; no engine change): BC, AB, SK, MB, ON (surtax, health premium), NS, NL, YT, NT, NU. Prince Edward Island was added afterwards as a data pack (no app release needed). Quebec is not included yet. See jobeval-data `docs/COVERAGE.md`.
 - Region page lists provinces alphabetically and picks one by default instead of "whole country" (renamed "Federal rules only").

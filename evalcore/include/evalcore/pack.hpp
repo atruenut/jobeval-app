@@ -15,7 +15,7 @@
 namespace jobeval {
 
 constexpr int kEngineMajor = 1;
-constexpr int kEngineMinor = 0;
+constexpr int kEngineMinor = 1;
 constexpr int kPackSchema = 1;
 
 enum class Severity { Error, Warning };
@@ -71,6 +71,8 @@ struct InputDef {
     std::string label;
     bool has_default = false;
     Decimal default_value;
+    // type "choice": the value is one of these numbers; the label is what the person sees.
+    std::vector<std::pair<Decimal, std::string>> options;
 };
 
 struct Rule {

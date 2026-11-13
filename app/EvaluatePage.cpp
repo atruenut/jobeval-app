@@ -494,6 +494,7 @@ QVariantMap EvaluatePage::collectState() const {
     m["unit"] = unit_->currentIndex();
     m["asof"] = asOf_->date().toString(Qt::ISODate);
     for (auto it = extras_.begin(); it != extras_.end(); ++it) m["x." + it.key()] = it.value()->value();
+    for (auto it = extraChoices_.begin(); it != extraChoices_.end(); ++it) m["x." + it.key()] = it.value()->currentData().toDouble();
     return m;
 }
 
@@ -567,6 +568,12 @@ void EvaluatePage::setJob(const Job& job, const std::shared_ptr<const Bundle>& b
         const QString key = "x." + it.key();
         if (st.contains(key)) it.value()->setValue(st[key].toDouble());
     }
+    for (auto it = extraChoices_.begin(); it != extraChoices_.end(); ++it) {
+        const QString key = "x." + it.key();
+        if (!st.contains(key)) continue;
+        const int i = it.value()->findData(st[key].toDouble());
+        if (i >= 0) it.value()->setCurrentIndex(i);
+    }
     loading_ = false;
     applyUnits();
     updateVisibility();
@@ -576,11 +583,26 @@ void EvaluatePage::setJob(const Job& job, const std::shared_ptr<const Bundle>& b
 void EvaluatePage::buildExtraInputs() {
     while (extraForm_->rowCount() > 0) extraForm_->removeRow(0);
     extras_.clear();
+    extraChoices_.clear();
     static const QStringList standard = {"gross_annual", "wage"};
     for (const auto& kv : bundle_->inputs) {
         const QString name = QString::fromStdString(kv.first);
         if (standard.contains(name)) continue;
         const InputDef& in = kv.second;
+        if (in.type == "choice") {
+            auto* c = new QComboBox;
+            for (const auto& o : in.options) c->addItem(QString::fromStdString(o.second), o.first.to_double());
+            const int d = c->findData(in.default_value.to_double());
+            if (d >= 0) c->setCurrentIndex(d);
+            extraChoices_[name] = c;
+            extraForm_->addRow(QString::fromStdString(in.label.empty() ? in.name : in.label), c);
+            connect(c, &QComboBox::currentIndexChanged, this, [this]() {
+                if (loading_) return;
+                recalc();
+                emitEdited();
+            });
+            continue;
+        }
         auto* s = new QDoubleSpinBox;
         s->setRange(-1e9 + 1, 1e9 - 1);
         s->setDecimals(2);
@@ -594,7 +616,7 @@ void EvaluatePage::buildExtraInputs() {
             emitEdited();
         });
     }
-    extraBox_->setVisible(!extras_.isEmpty());
+    extraBox_->setVisible(!extras_.isEmpty() || !extraChoices_.isEmpty());
 }
 
 void EvaluatePage::recalcNotWorking() {

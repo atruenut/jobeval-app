@@ -68,6 +68,7 @@ private:
     QWidget* body_;
     QMap<QString, Field> fields_;
     QMap<QString, QDoubleSpinBox*> extras_;
+    QMap<QString, QComboBox*> extraChoices_;  // pack inputs of type "choice"
     QFormLayout* payForm_;
     QFormLayout* otForm_;
     QGroupBox* otBox_;

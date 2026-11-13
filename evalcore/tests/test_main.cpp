@@ -299,6 +299,35 @@ static void test_packs() {
         CHECK(set.bundle_for("C-1", diag) == nullptr);
         CHECK(diag.format().find("dependency cycle") != std::string::npos);
     }
+    {  // choice inputs: numeric options with labels, selected through a rule
+        auto mk = [](const char* inputs) {
+            return std::string(R"J({"schema":1,"id":"CH-1","kind":"country","region":{"country":"CH"},
+              "valid":{"from":"2026-01-01"},"revision":1,"tier":"estimate","currency":"CHF",
+              "inputs":{"status":)J") + inputs + R"J(},
+              "rules":[{"id":"ded","expr":"if(status == 2, 200, 100)"}]})J";
+        };
+        const std::string good = mk(R"J({"type":"choice","default":1,"options":[{"value":1,"label":"One"},{"value":2,"label":"Two"}]})J");
+        PackSet set;
+        Diagnostics diag;
+        CHECK(set.add(Json::parse(good), "ch", diag));
+        auto b = set.bundle_for("CH-1", diag);
+        CHECK(b != nullptr);
+        CHECK(b->inputs.at("status").options.size() == 2);
+        CHECK_EQ(b->inputs.at("status").options[1].second, std::string("Two"));
+        EvalInputs ei;
+        Evaluator d0(b, ei);
+        CHECK_EQ(d0.rule("ded").as_num().to_string(), "100");  // default
+        ei.values = {{"status", N("2")}};
+        Evaluator d1(b, ei);
+        CHECK_EQ(d1.rule("ded").as_num().to_string(), "200");
+        for (const char* badInput : {R"J({"type":"choice","default":1})J",
+                                     R"J({"type":"choice","default":3,"options":[{"value":1,"label":"One"}]})J",
+                                     R"J({"type":"money","options":[{"value":1,"label":"One"}]})J"}) {
+            PackSet s2;
+            Diagnostics d2;
+            CHECK(!s2.add(Json::parse(mk(badInput)), "bad", d2));
+        }
+    }
     {  // unresolved references, bad expressions, missing sources
         const char* bad = R"J({
           "schema": 1, "id": "B-1", "kind": "country", "region": {"country": "BB"},
