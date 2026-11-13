@@ -7,6 +7,10 @@ comparison across opportunities. Offline desktop app; region-specific rules (tax
 contributions, statutory minimums, benefits) come from data packs published by
 [jobeval-data](https://github.com/atruenut/jobeval-data) and downloaded on demand.
 
+## User guide
+
+See `docs/USER_GUIDE.md`. Releases (Windows zip) are on the GitHub Releases page.
+
 ## Status
 
 The engine, signed pack catalog with offline cache, the Qt desktop app (real hourly, take-home,
