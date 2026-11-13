@@ -301,6 +301,30 @@ bool load_pack(const Json& doc, const std::string& origin, Pack& out, Diagnostic
                     if (d->is_number() && Decimal::try_parse(d->str(), in.default_value, &err)) in.has_default = true;
                     else diag.error(iw, "default must be a number");
                 }
+                if (const Json* opts = ij.find("options")) {
+                    if (!opts->is_array()) {
+                        diag.error(iw, "options must be a list");
+                    } else {
+                        for (const auto& oj : opts->items()) {
+                            Decimal v;
+                            std::string oerr;
+                            const Json* vj = oj.is_object() ? oj.find("value") : nullptr;
+                            if (!vj || !vj->is_number() || !Decimal::try_parse(vj->str(), v, &oerr)) {
+                                diag.error(iw, "each option needs a numeric value and a label");
+                                continue;
+                            }
+                            in.options.emplace_back(v, get_str(oj, "label", true, iw + ".options", diag));
+                        }
+                    }
+                }
+                if (in.type == "choice") {
+                    if (in.options.empty()) diag.error(iw, "a choice input needs options");
+                    bool listed = false;
+                    for (const auto& o : in.options) listed = listed || (in.has_default && o.first == in.default_value);
+                    if (!in.options.empty() && !listed) diag.error(iw, "a choice input needs a default that is one of its options");
+                } else if (!in.options.empty()) {
+                    diag.error(iw, "options are only for type \"choice\"");
+                }
                 p.inputs.push_back(std::move(in));
             }
         }

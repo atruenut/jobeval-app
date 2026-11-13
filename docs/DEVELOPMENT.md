@@ -17,6 +17,16 @@ Newest first. Keep this current: one entry per merged milestone or notable decis
 
 ## Log
 
+### 2026-11-12 (late night) — choice inputs, US filing status (0.6.0)
+- Engine 1.1: `InputDef.options`, `type: choice` validated in pack.cpp (needs options, default must be
+  one of them, options only on choice). Values stay numbers (`Value::num`), so job JSON, extras
+  (`x.<name>`) and the not-working path needed no change. App: `EvaluatePage::extraChoices_` combo boxes.
+- US-2026 revision 2 uses it for single / married filing jointly / head of household (standard
+  deductions 16,100 / 32,200 / 24,150; MFJ brackets from the IRS release; HoH brackets from Tax
+  Foundation citing Rev. Proc. 2025-32, flagged third_party). MFJ means "this job's pay only": spouse
+  income is not modelled.
+- Tests: new engine choice test; 21 derived US cases (3 statuses x 7 incomes) from tools/reference_us.py.
+
 ### 2026-11-12 (night) — US federal pack
 - US-2026 added in jobeval-data (PR #6): single filer, standard deduction 16,100, seven brackets
   (IRS Rev. Proc. 2025-32 release), Social Security 6.2% to 184,500, Medicare 1.45%, Additional
