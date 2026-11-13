@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.0
+- Compare: type exchange rates (or press "Fetch current rates") to rank jobs paid in different currencies; "Save table as CSV…".
+- Data packs added since 0.6.0 need no new app: all 50 US states and DC, Australia, Germany, Ireland and New Zealand (see jobeval-data `docs/COVERAGE.md`; several are marked "Rough estimate").
+- Tagging `v*` now publishes a GitHub Release with the Windows zip.
+
 ## 0.6.0
 - Compare: "Save table as CSV…" exports the table as shown (for spreadsheets).
 - Compare: when jobs use more than one currency, a "Compare in" bar lets you type exchange rates (nothing is downloaded or guessed). With a rate set, those jobs are highlighted, scored and ranked against each other in your chosen currency; without one they stay separate. Saved in the project file. Optional "Fetch current rates" button (you press it; nothing is fetched automatically) gets European Central Bank reference rates from the open Frankfurter API; only currency codes are sent, and the source and date are shown. Typing a rate overrides it. Charts stay per-currency.

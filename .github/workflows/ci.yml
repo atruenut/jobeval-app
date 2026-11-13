@@ -3,6 +3,7 @@ name: ci
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
@@ -160,3 +161,29 @@ jobs:
           build/eval-cli eval CA-NB-2026 --cache cache --date 2026-11-10 \
             --input gross_annual=50000 --input wage=20 | tee out.txt
           grep -E '^cpp.base +2766.75$' out.txt
+
+  # Tag v* (for example v0.7.0) publishes a GitHub Release with the Windows zip and the CLI.
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [unix, app-windows, live-catalog]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: JobEvaluator-windows
+          path: JobEvaluator
+      - uses: actions/download-artifact@v4
+        with:
+          name: eval-cli-ubuntu-latest
+          path: cli
+      - name: Zip and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          zip -qr "JobEvaluator-${GITHUB_REF_NAME}-windows.zip" JobEvaluator
+          chmod +x cli/eval-cli && tar -czf "eval-cli-${GITHUB_REF_NAME}-linux.tar.gz" -C cli eval-cli
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "Job Evaluator ${GITHUB_REF_NAME}" \
+            --notes "Unzip and run jobeval.exe. Region rules download on first use and are cached for offline use. See CHANGELOG.md." \
+            "JobEvaluator-${GITHUB_REF_NAME}-windows.zip" "eval-cli-${GITHUB_REF_NAME}-linux.tar.gz"
