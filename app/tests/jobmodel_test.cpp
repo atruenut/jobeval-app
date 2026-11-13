@@ -1,5 +1,6 @@
 #include <QtTest>
 
+#include "../Csv.hpp"
 #include "../FxRates.hpp"
 #include "../JobModel.hpp"
 #include "../JobResult.hpp"
@@ -79,6 +80,15 @@ private Q_SLOTS:
         QCOMPARE(q.ratesInfo, p.ratesInfo);
         QCOMPARE(q.rates.value("USD").toDouble(), 1.37);
         QCOMPARE(q.rates.value("GBP").toDouble(), 1.82);
+    }
+
+    void csvQuotingAndFormulaGuard() {
+        QCOMPARE(csv::field("plain"), QString("plain"));
+        QCOMPARE(csv::field("a,b"), QString("\"a,b\""));
+        QCOMPARE(csv::field("say \"hi\""), QString("\"say \"\"hi\"\"\""));
+        QCOMPARE(csv::field("-12.5"), QString("-12.5"));          // a real number stays a number
+        QCOMPARE(csv::field("=SUM(A1)"), QString("\"'=SUM(A1)\""));  // text that looks like a formula is defused
+        QCOMPARE(csv::row({"a", "b,c"}), QString("a,\"b,c\"\r\n"));
     }
 
     void fxParseInvertsAndReportsMissing() {

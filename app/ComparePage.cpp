@@ -6,6 +6,10 @@
 #include <QPushButton>
 
 #include "FxRates.hpp"
+#include "Csv.hpp"
+#include <QFileDialog>
+#include <QMessageBox>
+#include <QSaveFile>
 
 #include <QAction>
 #include <QComboBox>
@@ -112,6 +116,31 @@ ComparePage::ComparePage(QWidget* parent) : QWidget(parent) {
     }
     rowsButton_->setMenu(menu);
     bar->addWidget(rowsButton_);
+    auto* exportButton = new QPushButton(tr("Save table as CSV…"));
+    exportButton->setToolTip(tr("Saves the table as you see it (jobs as columns, rows as shown) for a spreadsheet."));
+    bar->addWidget(exportButton);
+    connect(exportButton, &QPushButton::clicked, this, [this]() {
+        if (table_->columnCount() == 0 || table_->rowCount() == 0) return;
+        const QString path = QFileDialog::getSaveFileName(this, tr("Save table as CSV"), tr("Compare.csv"), tr("CSV file (*.csv)"));
+        if (path.isEmpty()) return;
+        QString out;
+        QStringList head{QString()};
+        for (int c = 0; c < table_->columnCount(); ++c) head << table_->horizontalHeaderItem(c)->text();
+        out += csv::row(head);
+        for (int r = 0; r < table_->rowCount(); ++r) {
+            QStringList cells{table_->verticalHeaderItem(r) ? table_->verticalHeaderItem(r)->text() : QString()};
+            for (int c = 0; c < table_->columnCount(); ++c) cells << (table_->item(r, c) ? table_->item(r, c)->text() : QString());
+            out += csv::row(cells);
+        }
+        QSaveFile f(path);
+        if (!f.open(QIODevice::WriteOnly)) {
+            QMessageBox::warning(this, tr("Save table as CSV"), tr("Could not write %1.").arg(path));
+            return;
+        }
+        f.write("\xEF\xBB\xBF");   // UTF-8 byte-order mark so spreadsheets read accents correctly
+        f.write(out.toUtf8());
+        if (!f.commit()) QMessageBox::warning(this, tr("Save table as CSV"), tr("Could not write %1.").arg(path));
+    });
     ovl->addLayout(bar);
     empty_ = new QLabel(tr("Add a job to start. Add two or more to compare them here."));
     empty_->setObjectName("muted");
