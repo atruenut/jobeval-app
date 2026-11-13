@@ -9,11 +9,11 @@ Newest first. Keep this current: one entry per merged milestone or notable decis
 - [x] M3 desktop app: region picker, take-home evaluator, Windows zip
 - [x] M4 real hourly: commute time/distance, vehicle costs, unpaid time, benefits value, statutory overtime
 - [x] M5 projects: several jobs per project, side-by-side comparison, save/open/autosave, import/export of selected jobs, company overtime and more pay types
-- [ ] M5b comparison polish: charts, sorting, "what wage would make job A equal job B"
-- [ ] M6 not-working modes: unemployment programs, student, savings runway
-- [ ] M7 pack expansion: other provinces, US, UK, 2027 draft pack; official CRA PDOC runs
+- [x] M5b/M6 comparison and not-working modes: charts, fit score, sorting, what-if scenario, break-even, sensitivity, benefit duration and runway (0.3.0-0.4.0)
+- [x] M7 packs: all Canadian provinces and territories (Quebec as an estimate), UK incl. Scotland, US federal + 15 states, filing-status choice (0.5.0-0.6.0)
+- [ ] M7b still open: 2027 pack (needs CRA's January tables), more US states (NY, OR, IN, NC, ... need official sources), other countries, official calculator runs (`docs/OFFICIAL_RUNS.md`), Quebec to `partial` (needs TP-1015.F-V)
 - [ ] Installer / code signing, auto-update of the app itself, key-rotation plan
-- [ ] Decide data licence (MIT now; CC BY 4.0 suggested)
+- [x] Data licence decided: CC BY 4.0 for data and docs, MIT for tools (jobeval-data `LICENSE`; the full legal text is not yet in the repo, add it via GitHub's licence picker or copy from creativecommons.org)
 
 ## Log
 
