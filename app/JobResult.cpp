@@ -116,3 +116,39 @@ void scoreResults(QList<JobResult>& results, const QVariantMap& priorities) {
         r.fit = fit.to_double();
     }
 }
+
+QList<int> sortOrder(const QList<JobResult>& results, int mode, const std::function<QString(const QString&)>& regionTitle) {
+    const int n = static_cast<int>(results.size());
+    auto key = [&](int i, double& v) {
+        const JobResult& r = results[i];
+        switch (mode) {
+            case 4: case 5: if (!r.ok || r.notWorking) return false; v = r.emp.hourly_wage.to_double(); return true;
+            case 6: if (!r.ok || !r.hasHourly) return false; v = r.realHourly; return true;
+            case 7: if (!r.ok) return false; v = r.notWorking ? r.nw.net_monthly.to_double() : r.emp.take_home.net_monthly.to_double(); return true;
+            case 8: if (!r.ok) return false; v = r.hoursPerWeek; return true;
+            case 9: if (!r.ok || !r.hasFit) return false; v = r.fit; return true;
+            default: return false;
+        }
+    };
+    QList<int> order;
+    for (int i = 0; i < n; ++i) order.append(i);
+    if (mode == 1) {
+        std::reverse(order.begin(), order.end());
+    } else if (mode == 2 || mode == 3 || mode == 10) {
+        std::stable_sort(order.begin(), order.end(), [&](int a, int b) {
+            const int c = mode == 10 ? regionTitle(results[a].job.packId).localeAwareCompare(regionTitle(results[b].job.packId))
+                                     : results[a].job.name.localeAwareCompare(results[b].job.name);
+            return mode == 3 ? c > 0 : c < 0;
+        });
+    } else if (mode >= 4) {
+        const bool ascending = mode == 5 || mode == 8;
+        std::stable_sort(order.begin(), order.end(), [&](int a, int b) {
+            double va = 0, vb = 0;
+            const bool ha = key(a, va), hb = key(b, vb);
+            if (ha != hb) return ha;
+            if (!ha) return false;
+            return ascending ? va < vb : va > vb;
+        });
+    }
+    return order;
+}

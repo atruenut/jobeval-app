@@ -50,4 +50,9 @@ JobResult evaluateJob(const Job& job, const BundleLookup& lookup, const QString&
 // in the same currency (the best earns 10), free time on an absolute scale (0 h/week = 10, 60 h = 0).
 void scoreResults(QList<JobResult>& results, const QVariantMap& priorities);
 
+// Job-list order for the sort choices of the main window (0 added, 1 newest, 2/3 name, 4/5 pay,
+// 6 real hourly, 7 take-home, 8 hours, 9 fit, 10 region). Returns project indexes; never changes the
+// jobs themselves. Entries without the sort value (failed or not-working rows for pay, ...) go last.
+QList<int> sortOrder(const QList<JobResult>& results, int mode, const std::function<QString(const QString&)>& regionTitle);
+
 QColor seriesColor(int index);
