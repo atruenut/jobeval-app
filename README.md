@@ -9,9 +9,12 @@ contributions, statutory minimums, benefits) come from data packs published by
 
 ## Status
 
-Milestones 1-3 are done: engine and rule language, signed pack catalog with an offline
-cache, and a Qt desktop app (pick a region, enter wage and hours, see take-home with a full
-breakdown and explanation). Only Canada / New Brunswick 2026 packs exist so far.
+The engine, signed pack catalog with offline cache, the Qt desktop app (real hourly, take-home,
+overtime, not-working modes, a compare view with charts, fit score and what-if tools) and
+region packs are in place. Regions so far: Canada (all provinces and territories; Quebec is a rough
+estimate), the United Kingdom (England/Wales/Northern Ireland and Scotland), and the United States
+(federal plus California, Georgia, Illinois, Kentucky, Michigan, Pennsylvania and the nine states
+with no wage income tax). Exact coverage, gaps and sources per pack: jobeval-data `docs/COVERAGE.md`.
 You can keep several jobs in a project, compare them side by side, and save, load, import and export them (`docs/FILE_FORMAT.md`). Roadmap and log: `docs/DEVELOPMENT.md`. Design: `docs/ARCHITECTURE.md`. Contributing:
 `CONTRIBUTING.md`.
 
