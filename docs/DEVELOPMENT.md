@@ -65,6 +65,7 @@ Newest first. Keep this current: one entry per merged milestone or notable decis
 ### 2026-11-13 — Manual currency conversion in Compare
 - Why: CA, US and GB jobs could not be ranked together. Rates are typed by the person (offline app, no invented figures); `Project.homeCurrency`/`rates` are stored under `currencies` in the project file.
 - How: `applyRates()` sets each result's `fx` and `group` (its own currency, or the home currency if a rate exists); `scoreResults` scales money by `fx` and compares within `group`. Overview highlights, summary and baseline deltas use group values. Charts and the pay-curve view remain per-currency.
+- Live rates: `fx::latestUrl/parseLatest` (pure, tested) + a button in the Compare FX bar. Asks for `base=<home>&symbols=<others>` and inverts, so the stored convention stays 1 <other> = x <home>. Never automatic; failures leave typed rates untouched. Changing the comparison currency clears rates (they were quoted in the old one). Could not call the API from the build sandbox (not allowlisted), so the reply shape was taken from the Frankfurter docs and is parsed defensively; confirm with a real click.
 - Tests: JobModel currencies round trip, `ratesLetCurrenciesCompete`.
 
 ### 2026-11-12 (later) — M7 consistency audit, sorting, what-if controls

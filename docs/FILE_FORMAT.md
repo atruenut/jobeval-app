@@ -10,7 +10,7 @@ pick which jobs to take, so a job file is just a project file with `"kind": "job
   "kind": "project",          // "project" or "jobs"; both are read the same way
   "name": "My jobs",
   "priorities": { "money": 8, "stress": 4 },  // optional: 0-10 weight per criterion (keys in app/JobResult.cpp)
-  "currencies": { "home": "CAD", "rates": { "USD": 1.37 } },  // optional: typed exchange rates (1 USD = 1.37 CAD); never downloaded
+  "currencies": { "home": "CAD", "rates": { "USD": 1.37 }, "info": "ECB rates via Frankfurter, 2026-11-12" },  // optional: typed exchange rates (1 USD = 1.37 CAD); fetched only when you press the button, otherwise typed
   "baseline": "uuid",         // optional: id of a not-working entry used as the comparison baseline
   "jobs": [
     {

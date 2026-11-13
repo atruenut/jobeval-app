@@ -1,5 +1,12 @@
 #include "ComparePage.hpp"
 
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
+#include <QPushButton>
+
+#include "FxRates.hpp"
+
 #include <QAction>
 #include <QComboBox>
 #include <QDoubleSpinBox>
@@ -356,7 +363,8 @@ ComparePage::ComparePage(QWidget* parent) : QWidget(parent) {
 
 void ComparePage::refresh(const QList<Job>& jobs, const BundleLookup& lookup, const QMap<QString, QString>& regionNames,
                           const QVariantMap& priorities, const QString& baselineId, const QString& homeCurrency,
-                          const QVariantMap& rates) {
+                          const QVariantMap& rates, const QString& ratesInfo) {
+    ratesInfo_ = ratesInfo;
     home_ = homeCurrency;
     rates_ = rates;
     jobs_ = jobs;
@@ -480,7 +488,9 @@ void ComparePage::rebuildFxBar() {
     connect(homeBox, &QComboBox::currentTextChanged, this, [this](const QString& h) {
         if (updating_ || h == home_) return;
         home_ = h;
-        Q_EMIT currenciesChanged(home_, rates_);
+        rates_.clear();       // rates are quoted in the comparison currency, so they no longer apply
+        ratesInfo_.clear();
+        Q_EMIT currenciesChanged(home_, rates_, ratesInfo_);
         rebuild();
     });
     for (auto it = counts.begin(); it != counts.end(); ++it) {
@@ -501,11 +511,52 @@ void ComparePage::rebuildFxBar() {
             if (updating_) return;
             if (v > 0) rates_[cur] = v;
             else rates_.remove(cur);
-            Q_EMIT currenciesChanged(home_, rates_);
+            ratesInfo_.clear();   // no longer purely fetched
+            if (fxStatus_) fxStatus_->clear();
+            Q_EMIT currenciesChanged(home_, rates_, ratesInfo_);
             rebuild();
         });
     }
+    QStringList others;
+    for (auto it = counts.begin(); it != counts.end(); ++it)
+        if (it.key() != home) others << it.key();
+    auto* fetch = new QPushButton(tr("Fetch current rates"));
+    fetch->setToolTip(tr("Optional. Asks the open Frankfurter service (European Central Bank reference rates, updated each working day) for today's rates. "
+                         "Only the currency codes are sent. Needs internet; you can still type rates by hand, and the app works fully offline without this."));
+    connect(fetch, &QPushButton::clicked, this, [this, home, others]() { fetchRates(home, others); });
+    fxLayout_->addWidget(fetch);
+    fxStatus_ = new QLabel(ratesInfo_);
+    fxStatus_->setStyleSheet("color: gray");
+    fxLayout_->addWidget(fxStatus_);
     fxLayout_->addStretch(1);
+}
+
+void ComparePage::fetchRates(const QString& home, const QStringList& others) {
+    if (!nam_) nam_ = new QNetworkAccessManager(this);
+    fxStatus_->setText(tr("Fetching…"));
+    QNetworkRequest req(fx::latestUrl(home, others));
+    req.setTransferTimeout(15000);
+    req.setHeader(QNetworkRequest::UserAgentHeader, "jobeval/" JOBEVAL_VERSION);
+    QNetworkReply* reply = nam_->get(req);
+    connect(reply, &QNetworkReply::finished, this, [this, reply, home, others]() {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) {
+            if (fxStatus_) fxStatus_->setText(tr("Could not fetch rates (%1). Your typed rates are unchanged.").arg(reply->errorString()));
+            return;
+        }
+        const fx::Parsed p = fx::parseLatest(reply->readAll().left(1 << 20), home, others);
+        if (!p.ok) {
+            if (fxStatus_) fxStatus_->setText(tr("Could not use the reply (%1). Your typed rates are unchanged.").arg(p.error));
+            return;
+        }
+        if (home_ != home) return;   // the comparison currency changed while waiting
+        for (auto it = p.rates.begin(); it != p.rates.end(); ++it) rates_[it.key()] = it.value();
+        QString info = tr("ECB rates via Frankfurter, %1").arg(p.date);
+        if (!p.missing.isEmpty()) info += tr(" (no rate for %1: type it by hand)").arg(p.missing.join(", "));
+        ratesInfo_ = info;
+        Q_EMIT currenciesChanged(home_, rates_, ratesInfo_);
+        rebuild();
+    });
 }
 
 void ComparePage::buildOverview() {

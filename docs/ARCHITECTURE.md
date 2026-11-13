@@ -29,7 +29,7 @@ jobeval-data (GitHub)                    jobeval-app (this repo)
   install. Catalog rollback is refused via its `generated` timestamp; the previous revision
   is kept; cached files are re-hashed on every load; filenames must match
   `packs/[A-Za-z0-9._-]+.json`.
-- **Offline first.** Everything works from the cache; the network is only used to refresh.
+- **Offline first.** Everything works from the cache; the network is only used to refresh packs, and for the optional, button-triggered exchange-rate lookup in Compare (`app/FxRates.*`, ECB data via api.frankfurter.dev; v1 endpoint, which its maintainers mark deprecated but still working, so revisit if it stops).
 - **Honesty about coverage.** Packs declare a tier (estimate / partial / full) and
   `not_modelled`; the UI shows both. Results are for comparing jobs, not payroll.
 - **Qt rules.** The app is compiled with `QT_NO_KEYWORDS` (Qt's `slots` macro collides with
