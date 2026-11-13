@@ -17,6 +17,11 @@ Newest first. Keep this current: one entry per merged milestone or notable decis
 
 ## Log
 
+### 2026-11-13 — sorting under test
+- The job-list ordering moved out of `MainWindow` into `sortOrder()` in `JobResult.cpp`, so it has a unit test
+  (`sortOrderModes`): all eleven modes, missing values last, jobs never reordered. Behaviour unchanged.
+- Test names use one letter case on purpose: `localeAwareCompare` is codepoint-based in the C locale.
+
 ### 2026-11-12 (late night) — choice inputs, US filing status (0.6.0)
 - Engine 1.1: `InputDef.options`, `type: choice` validated in pack.cpp (needs options, default must be
   one of them, options only on choice). Values stay numbers (`Value::num`), so job JSON, extras

@@ -6,6 +6,37 @@
 class JobModelTest : public QObject {
     Q_OBJECT
 private Q_SLOTS:
+    void sortOrderModes() {
+        auto mk = [](const QString& name, double hourly, double real, double hours, bool ok = true, bool nw = false) {
+            JobResult r;
+            r.job.name = name;
+            r.ok = ok;
+            r.notWorking = nw;
+            r.hasHourly = ok && !nw;
+            r.realHourly = real;
+            r.hoursPerWeek = hours;
+            r.emp.hourly_wage = jobeval::Decimal::parse(QString::number(hourly).toStdString());
+            r.hasFit = ok;
+            r.fit = real * 3;
+            return r;
+        };
+        QList<JobResult> rs;
+        rs << mk("Bravo", 20, 15, 40) << mk("Alpha", 30, 22, 35) << mk("Charlie", 25, 18, 45, false) << mk("Rest", 0, 0, 0, true, true)
+           << mk("Delta", 10, 9, 20);
+        auto region = [](const QString&) { return QString(); };
+        auto asList = [](const QList<int>& l) { QStringList s; for (int i : l) s << QString::number(i); return s.join(","); };
+        QCOMPARE(asList(sortOrder(rs, 0, region)), QString("0,1,2,3,4"));            // added
+        QCOMPARE(asList(sortOrder(rs, 1, region)), QString("4,3,2,1,0"));            // newest first
+        QCOMPARE(asList(sortOrder(rs, 2, region)), QString("1,0,2,4,3"));            // A-Z (Alpha, Bravo, Charlie, Delta, Rest)
+        QCOMPARE(asList(sortOrder(rs, 3, region)), QString("3,4,2,0,1"));            // Z-A
+        QCOMPARE(asList(sortOrder(rs, 4, region)), QString("1,0,4,2,3"));            // pay high first; failed and not-working last
+        QCOMPARE(asList(sortOrder(rs, 5, region)), QString("4,0,1,2,3"));            // pay low first
+        QCOMPARE(asList(sortOrder(rs, 6, region)), QString("1,0,4,2,3"));            // real hourly high first
+        QCOMPARE(asList(sortOrder(rs, 8, region)), QString("3,4,1,0,2"));            // fewest hours first, failed last
+        QCOMPARE(asList(sortOrder(rs, 9, region)), QString("1,0,4,3,2"));            // fit; the not-working row (fit 0) still ranks above the failed one
+        QCOMPARE(rs[0].job.name, QString("Bravo"));                                    // the jobs themselves never move
+    }
+
     void defaultsAreComplete() {
         const QVariantMap d = defaultState();
         for (const FieldSpec& f : fieldSpecs()) QVERIFY2(d.contains(f.key), f.key);
