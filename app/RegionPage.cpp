@@ -130,13 +130,15 @@ void RegionPage::populateSubregions() {
     subregion_->clear();
     const QString countryId = country_->currentData().toString();
     if (!countryId.isEmpty()) {
-        subregion_->addItem(tr("Federal rules only (no province or territory)"), countryId);
+        subregion_->addItem(tr("Country-wide rules only (no province, state or nation)"), countryId);
         QList<QPair<QString, QString>> subs;
         for (const auto& e : service_->catalog().packs)
             if (e.extends == countryId.toStdString()) subs.append({labelOf(e), QString::fromStdString(e.id)});
         std::sort(subs.begin(), subs.end(), [](const auto& a, const auto& b) { return a.first.localeAwareCompare(b.first) < 0; });
         for (const auto& sub : subs) subregion_->addItem(sub.first, sub.second);
-        if (subs.size() > 0) subregion_->setCurrentIndex(1);  // a province is almost always what the person wants
+        // Where there are many sub-regions (provinces, states) one of them is almost always what the person
+        // wants; where there are only a few (Scotland beside the rest of the UK) the country-wide rules are the usual case.
+        if (subs.size() > 3) subregion_->setCurrentIndex(1);
     }
     subregion_->setEnabled(subregion_->count() > 1);
     subregion_->blockSignals(false);
