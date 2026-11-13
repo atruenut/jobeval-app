@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QHBoxLayout>
 #include <QList>
 #include <QMap>
 #include <QVariantMap>
@@ -20,13 +21,14 @@ class QToolButton;
 
 // Jobs side by side: overview table, charts, a weighted "fit" score driven by the person's own
 // priorities, and what-if tools (break-even pay, pay curves, pay in N years). Money rankings only
-// happen between jobs paid in the same currency.
+// happen between jobs paid in the same currency, or in currencies the person has given an exchange rate for.
 class ComparePage : public QWidget {
     Q_OBJECT
 public:
     explicit ComparePage(QWidget* parent = nullptr);
     void refresh(const QList<Job>& jobs, const BundleLookup& lookup, const QMap<QString, QString>& regionNames,
-                 const QVariantMap& priorities, const QString& baselineId);
+                 const QVariantMap& priorities, const QString& baselineId, const QString& homeCurrency = QString(),
+                 const QVariantMap& rates = QVariantMap());
 
     void showSubTab(int sub, int chart);
     void setScenario(const QVariantMap& values);  // developer aid: pay, raise, years, inflation, hours, commute, remote, bonus, benefits, costs, vacation  // developer/screenshot aid
@@ -34,6 +36,7 @@ public:
 Q_SIGNALS:
     void prioritiesChanged(const QVariantMap& priorities);
     void baselineChanged(const QString& jobId);
+    void currenciesChanged(const QString& home, const QVariantMap& rates);
 
 private:
     void rebuild();          // recompute scores and redraw everything from jobs_/priorities_
@@ -41,11 +44,16 @@ private:
     void buildWhatIf();
     void loadScenarioDefaults();
     void onPriorityEdited();
+    void rebuildFxBar();     // exchange-rate inputs, shown when the jobs use more than one currency
 
     QList<Job> jobs_;
     BundleLookup lookup_;
     QVariantMap priorities_;
     QString baselineId_;
+    QString home_;           // chosen comparison currency ("" = automatic)
+    QVariantMap rates_;      // typed rates: currency -> units of the comparison currency
+    QWidget* fxBox_ = nullptr;
+    QHBoxLayout* fxLayout_ = nullptr;
     QList<JobResult> results_;
     bool updating_ = false;
 

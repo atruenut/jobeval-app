@@ -62,6 +62,11 @@ Newest first. Keep this current: one entry per merged milestone or notable decis
 - No engine change was needed. Open: official calculator runs for any province; 2027 pack (wait for
   the 2027 T4127 and CPP/EI announcements); US and UK.
 
+### 2026-11-13 — Manual currency conversion in Compare
+- Why: CA, US and GB jobs could not be ranked together. Rates are typed by the person (offline app, no invented figures); `Project.homeCurrency`/`rates` are stored under `currencies` in the project file.
+- How: `applyRates()` sets each result's `fx` and `group` (its own currency, or the home currency if a rate exists); `scoreResults` scales money by `fx` and compares within `group`. Overview highlights, summary and baseline deltas use group values. Charts and the pay-curve view remain per-currency.
+- Tests: JobModel currencies round trip, `ratesLetCurrenciesCompete`.
+
 ### 2026-11-12 (later) — M7 consistency audit, sorting, what-if controls
 - Audit of the money/time chain found: (1) `benefit_weeks` was collected but never used, so a 26-week
   benefit was taxed and budgeted as a full year. `evaluate_not_working` now taxes year one on what is

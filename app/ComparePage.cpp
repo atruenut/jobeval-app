@@ -77,6 +77,10 @@ ComparePage::ComparePage(QWidget* parent) : QWidget(parent) {
     warning_->setWordWrap(true);
     warning_->setObjectName("muted");
     ovl->addWidget(warning_);
+    fxBox_ = new QWidget;
+    fxLayout_ = new QHBoxLayout(fxBox_);
+    fxLayout_->setContentsMargins(0, 0, 0, 0);
+    ovl->addWidget(fxBox_);
     auto* bar = new QHBoxLayout;
     bar->addWidget(new QLabel(tr("Baseline (what you would do instead):")));
     baseline_ = new QComboBox;
@@ -351,7 +355,10 @@ ComparePage::ComparePage(QWidget* parent) : QWidget(parent) {
 }
 
 void ComparePage::refresh(const QList<Job>& jobs, const BundleLookup& lookup, const QMap<QString, QString>& regionNames,
-                          const QVariantMap& priorities, const QString& baselineId) {
+                          const QVariantMap& priorities, const QString& baselineId, const QString& homeCurrency,
+                          const QVariantMap& rates) {
+    home_ = homeCurrency;
+    rates_ = rates;
     jobs_ = jobs;
     lookup_ = lookup;
     priorities_ = normalizedPriorities(priorities);
@@ -412,6 +419,7 @@ void ComparePage::onPriorityEdited() {
 }
 
 void ComparePage::rebuild() {
+    applyRates(results_, home_, rates_);
     scoreResults(results_, priorities_);
     buildOverview();
     chart_->setResults(results_, priorities_);
@@ -447,7 +455,61 @@ void ComparePage::rebuild() {
     if (!updating_) buildWhatIf();
 }
 
+void ComparePage::rebuildFxBar() {
+    while (QLayoutItem* it = fxLayout_->takeAt(0)) {
+        if (QWidget* w = it->widget()) w->deleteLater();
+        delete it;
+    }
+    QMap<QString, int> counts;
+    for (const JobResult& r : results_)
+        if (r.ok && !r.currency.isEmpty()) counts[r.currency]++;
+    fxBox_->setVisible(counts.size() > 1);
+    if (counts.size() < 2) return;
+    // The comparison currency: the chosen one if present, else the most common.
+    QString home = home_;
+    if (!counts.contains(home)) {
+        int best = -1;
+        for (auto it = counts.begin(); it != counts.end(); ++it)
+            if (it.value() > best) best = it.value(), home = it.key();
+    }
+    fxLayout_->addWidget(new QLabel(tr("Compare in")));
+    auto* homeBox = new QComboBox;
+    for (auto it = counts.begin(); it != counts.end(); ++it) homeBox->addItem(it.key());
+    homeBox->setCurrentText(home);
+    fxLayout_->addWidget(homeBox);
+    connect(homeBox, &QComboBox::currentTextChanged, this, [this](const QString& h) {
+        if (updating_ || h == home_) return;
+        home_ = h;
+        Q_EMIT currenciesChanged(home_, rates_);
+        rebuild();
+    });
+    for (auto it = counts.begin(); it != counts.end(); ++it) {
+        if (it.key() == home) continue;
+        const QString cur = it.key();
+        auto* label = new QLabel(tr("   1 %1 =").arg(cur));
+        auto* spin = new QDoubleSpinBox;
+        spin->setDecimals(4);
+        spin->setRange(0, 100000);
+        spin->setSingleStep(0.01);
+        spin->setSpecialValueText(tr("not set"));
+        spin->setSuffix(" " + home);
+        spin->setToolTip(tr("How many %1 one %2 is worth. Type today's rate; nothing is downloaded, so it never changes by itself. Leave it unset to keep %2 jobs out of money rankings.").arg(home, cur));
+        spin->setValue(rates_.value(cur).toDouble());
+        fxLayout_->addWidget(label);
+        fxLayout_->addWidget(spin);
+        connect(spin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this, cur](double v) {
+            if (updating_) return;
+            if (v > 0) rates_[cur] = v;
+            else rates_.remove(cur);
+            Q_EMIT currenciesChanged(home_, rates_);
+            rebuild();
+        });
+    }
+    fxLayout_->addStretch(1);
+}
+
 void ComparePage::buildOverview() {
+    rebuildFxBar();
     empty_->setVisible(jobs_.isEmpty());
     table_->setVisible(!jobs_.isEmpty());
     const JobResult* base = nullptr;
@@ -456,8 +518,8 @@ void ComparePage::buildOverview() {
 
     // Extra over baseline (same currency only).
     auto vsBaseMonth = [&](const JobResult& r, double& out) {
-        if (!base || r.notWorking || !r.ok || r.currency != base->currency) return false;
-        out = r.monthlyValue - base->monthlyValue;
+        if (!base || r.notWorking || !r.ok || r.group != base->group) return false;
+        out = r.monthlyValue * r.fx - base->monthlyValue * base->fx;   // in the group's currency
         return true;
     };
     auto vsBaseHourly = [&](const JobResult& r, double& out) {
@@ -478,7 +540,7 @@ void ComparePage::buildOverview() {
         Cell c;
         auto num = [&](double v, bool asMoney = true) {
             c.has = true;
-            c.v = v;
+            c.v = asMoney ? v * r.fx : v;   // comparison value in the group's currency
             c.text = asMoney ? money(v, r.currency) : QString::number(v, 'f', 1);
         };
         if (key == "region") c.text = r.region;
@@ -495,11 +557,11 @@ void ComparePage::buildOverview() {
             else c.text = QStringLiteral("–");
         } else if (key == "vsbase") {
             double x;
-            if (vsBaseHourly(r, x)) num(x);
+            if (vsBaseHourly(r, x)) c.has = true, c.v = x, c.text = money(x, r.group);
             else c.text = QStringLiteral("–");
         } else if (key == "vsbasemonth") {
             double x;
-            if (vsBaseMonth(r, x)) num(x);
+            if (vsBaseMonth(r, x)) c.has = true, c.v = x, c.text = money(x, r.group);
             else c.text = QStringLiteral("–");
         } else if (key == "month") num(r.monthlyValue * 0 + (r.notWorking ? r.nw.net_monthly.to_double() : r.emp.take_home.net_monthly.to_double()));
         else if (key == "gross") {
@@ -542,7 +604,7 @@ void ComparePage::buildOverview() {
             Cell c = cell(r, row.key);
             cells.append(c);
             if (c.has && row.better != 0 && r.ok) {
-                const QString k = row.key == "fit" ? QStringLiteral("*") : r.currency;
+                const QString k = row.key == "fit" ? QStringLiteral("*") : r.group;
                 count[k]++;
                 if (!best.contains(k) || (row.better > 0 ? c.v > best[k] : c.v < best[k])) best[k] = c.v;
             }
@@ -551,7 +613,7 @@ void ComparePage::buildOverview() {
             const JobResult& r = results_[ci];
             auto* it = new QTableWidgetItem(cells[ci].text);
             it->setTextAlignment(Qt::AlignCenter);
-            const QString k = row.key == "fit" ? QStringLiteral("*") : r.currency;
+            const QString k = row.key == "fit" ? QStringLiteral("*") : r.group;
             if (cells[ci].has && row.better != 0 && count.value(k) > 1 && qFuzzyCompare(cells[ci].v + 1, best[k] + 1)) {
                 it->setBackground(QColor(0xd9, 0xf2, 0xdc));
                 it->setForeground(QColor(0x14, 0x3d, 0x1c));
@@ -566,17 +628,17 @@ void ComparePage::buildOverview() {
     // Summary sentences.
     QMap<QString, QList<const JobResult*>> byCurrency;
     for (const JobResult& r : results_)
-        if (r.ok && r.hasHourly) byCurrency[r.currency].append(&r);
+        if (r.ok && r.hasHourly) byCurrency[r.group].append(&r);
     QString sum;
     for (auto it = byCurrency.begin(); it != byCurrency.end(); ++it) {
         auto l = it.value();
         if (l.size() < 2) continue;
-        std::sort(l.begin(), l.end(), [](const JobResult* a, const JobResult* b) { return a->realHourly > b->realHourly; });
-        const double gap = l[0]->realHourly - l[1]->realHourly;
+        std::sort(l.begin(), l.end(), [](const JobResult* a, const JobResult* b) { return a->realHourly * a->fx > b->realHourly * b->fx; });
+        const double h0 = l[0]->realHourly * l[0]->fx, h1 = l[1]->realHourly * l[1]->fx, gap = h0 - h1;
         sum += (sum.isEmpty() ? "" : "<br>") +
                tr("<b>%1</b> pays the most per hour of your time: %2, which is %3 (%4%) more than %5.")
-                   .arg(l[0]->job.name.toHtmlEscaped(), money(l[0]->realHourly, it.key()), money(gap, it.key()),
-                        QString::number(l[1]->realHourly > 0 ? gap / l[1]->realHourly * 100.0 : 0.0, 'f', 0), l[1]->job.name.toHtmlEscaped());
+                   .arg(l[0]->job.name.toHtmlEscaped(), money(h0, it.key()), money(gap, it.key()),
+                        QString::number(h1 > 0 ? gap / h1 * 100.0 : 0.0, 'f', 0), l[1]->job.name.toHtmlEscaped());
     }
     if (base) {
         for (const JobResult& r : results_) {
@@ -585,11 +647,11 @@ void ComparePage::buildOverview() {
                 sum += (sum.isEmpty() ? "" : "<br>") +
                        tr("Compared with <i>%1</i>, <b>%2</b> leaves you %3 %4 per month, or %5 for each hour it takes.")
                            .arg(base->job.name.toHtmlEscaped(), r.job.name.toHtmlEscaped(), m >= 0 ? tr("better off by") : tr("worse off by"),
-                                money(std::abs(m), r.currency), money(h, r.currency));
+                                money(std::abs(m), r.group), money(h, r.group));
         }
     }
     summary_->setText(sum.isEmpty() && !jobs_.isEmpty() ? tr("Add another job in the same currency to rank them.") : sum);
-    warning_->setText(byCurrency.size() > 1 ? tr("Jobs paid in different currencies are shown side by side but never ranked or highlighted against each other.") : QString());
+    warning_->setText(byCurrency.size() > 1 ? tr("Jobs in different currencies are shown side by side but not ranked against each other. Type an exchange rate above to compare them.") : QString());
 }
 
 namespace {
