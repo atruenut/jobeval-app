@@ -1,5 +1,6 @@
 #include <QtTest>
 
+#include "../FxRates.hpp"
 #include "../JobModel.hpp"
 #include "../JobResult.hpp"
 
@@ -70,12 +71,29 @@ private Q_SLOTS:
         Project p;
         p.homeCurrency = "CAD";
         p.rates = {{"USD", 1.37}, {"GBP", 1.82}};
+        p.ratesInfo = "ECB rates via Frankfurter, 2026-11-12";
         Project q;
         QString err;
         QVERIFY2(projectFromJson(projectToJson(p, "project"), q, err), qPrintable(err));
         QCOMPARE(q.homeCurrency, QString("CAD"));
+        QCOMPARE(q.ratesInfo, p.ratesInfo);
         QCOMPARE(q.rates.value("USD").toDouble(), 1.37);
         QCOMPARE(q.rates.value("GBP").toDouble(), 1.82);
+    }
+
+    void fxParseInvertsAndReportsMissing() {
+        const QByteArray js = R"({"amount":1.0,"base":"CAD","date":"2026-11-12","rates":{"USD":0.5,"GBP":0.25}})";
+        auto p = fx::parseLatest(js, "CAD", {"USD", "GBP", "AUD"});
+        QVERIFY(p.ok);
+        QCOMPARE(p.date, QString("2026-11-12"));
+        QCOMPARE(p.rates.value("USD").toDouble(), 2.0);   // 1 USD = 2 CAD
+        QCOMPARE(p.rates.value("GBP").toDouble(), 4.0);
+        QCOMPARE(p.missing, QStringList{"AUD"});
+        QVERIFY(!fx::parseLatest(js, "USD", {"CAD"}).ok);          // wrong base
+        QVERIFY(!fx::parseLatest("not json", "CAD", {"USD"}).ok);
+        QVERIFY(!fx::parseLatest(R"({"base":"CAD","rates":{"USD":0}})", "CAD", {"USD"}).ok);
+        QCOMPARE(fx::latestUrl("CAD", {"USD", "GBP"}).toString(),
+                 QString("https://api.frankfurter.dev/v1/latest?base=CAD&symbols=USD,GBP"));
     }
 
     void ratesLetCurrenciesCompete() {

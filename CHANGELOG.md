@@ -1,7 +1,7 @@
 # Changelog
 
 ## 0.6.0
-- Compare: when jobs use more than one currency, a "Compare in" bar lets you type exchange rates (nothing is downloaded or guessed). With a rate set, those jobs are highlighted, scored and ranked against each other in your chosen currency; without one they stay separate. Saved in the project file. Charts stay per-currency.
+- Compare: when jobs use more than one currency, a "Compare in" bar lets you type exchange rates (nothing is downloaded or guessed). With a rate set, those jobs are highlighted, scored and ranked against each other in your chosen currency; without one they stay separate. Saved in the project file. Optional "Fetch current rates" button (you press it; nothing is fetched automatically) gets European Central Bank reference rates from the open Frankfurter API; only currency codes are sent, and the source and date are shown. Typing a rate overrides it. Charts stay per-currency.
 - Engine 1.1: packs can declare pick-one inputs (`type: choice` with numeric options); the app shows them as drop-downs in the Region-specific box. Documented in jobeval-data `docs/PACK_SPEC.md`.
 - Data: United States (federal income tax, Social Security, Medicare, overtime) with a filing-status choice (single, married filing jointly, head of household), plus first state packs (nine no-wage-tax states, Pennsylvania, Illinois). Needs this version or newer for the US pack.
 

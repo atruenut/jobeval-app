@@ -198,6 +198,7 @@ QByteArray projectToJson(const Project& p, const QString& kind) {
         for (auto it = p.rates.begin(); it != p.rates.end(); ++it)
             if (it.value().toDouble() > 0) rates[it.key()] = it.value().toDouble();
         cur["rates"] = rates;
+        if (!p.ratesInfo.isEmpty()) cur["info"] = p.ratesInfo;
         root["currencies"] = cur;
     }
     return QJsonDocument(root).toJson(QJsonDocument::Indented);
@@ -247,6 +248,7 @@ bool projectFromJson(const QByteArray& json, Project& out, QString& error) {
     {
         const QJsonObject cur = root["currencies"].toObject();
         p.homeCurrency = cur["home"].toString();
+        p.ratesInfo = cur["info"].toString().left(200);
         const QJsonObject rates = cur["rates"].toObject();
         for (auto it = rates.begin(); it != rates.end(); ++it) {
             const double v = it.value().toDouble(0);

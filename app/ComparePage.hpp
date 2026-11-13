@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QHBoxLayout>
+#include <QLabel>
 #include <QList>
 #include <QMap>
 #include <QVariantMap>
@@ -10,6 +11,7 @@
 #include "JobModel.hpp"
 #include "JobResult.hpp"
 
+class QNetworkAccessManager;
 class QLabel;
 class QComboBox;
 class QDoubleSpinBox;
@@ -28,7 +30,7 @@ public:
     explicit ComparePage(QWidget* parent = nullptr);
     void refresh(const QList<Job>& jobs, const BundleLookup& lookup, const QMap<QString, QString>& regionNames,
                  const QVariantMap& priorities, const QString& baselineId, const QString& homeCurrency = QString(),
-                 const QVariantMap& rates = QVariantMap());
+                 const QVariantMap& rates = QVariantMap(), const QString& ratesInfo = QString());
 
     void showSubTab(int sub, int chart);
     void setScenario(const QVariantMap& values);  // developer aid: pay, raise, years, inflation, hours, commute, remote, bonus, benefits, costs, vacation  // developer/screenshot aid
@@ -36,7 +38,7 @@ public:
 Q_SIGNALS:
     void prioritiesChanged(const QVariantMap& priorities);
     void baselineChanged(const QString& jobId);
-    void currenciesChanged(const QString& home, const QVariantMap& rates);
+    void currenciesChanged(const QString& home, const QVariantMap& rates, const QString& info);
 
 private:
     void rebuild();          // recompute scores and redraw everything from jobs_/priorities_
@@ -44,6 +46,7 @@ private:
     void buildWhatIf();
     void loadScenarioDefaults();
     void onPriorityEdited();
+    void fetchRates(const QString& home, const QStringList& others);
     void rebuildFxBar();     // exchange-rate inputs, shown when the jobs use more than one currency
 
     QList<Job> jobs_;
@@ -52,6 +55,9 @@ private:
     QString baselineId_;
     QString home_;           // chosen comparison currency ("" = automatic)
     QVariantMap rates_;      // typed rates: currency -> units of the comparison currency
+    QString ratesInfo_;      // provenance of fetched rates ("" once any rate is typed by hand)
+    QLabel* fxStatus_ = nullptr;
+    QNetworkAccessManager* nam_ = nullptr;
     QWidget* fxBox_ = nullptr;
     QHBoxLayout* fxLayout_ = nullptr;
     QList<JobResult> results_;

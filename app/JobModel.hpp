@@ -24,6 +24,7 @@ struct Project {
     QVariantMap priorities;  // criterion key -> importance 0..10 (see criteria() in JobResult.hpp)
     QString baselineId;      // a not-working job that Compare measures jobs against ("" = none)
     QString homeCurrency;    // Compare converts other currencies into this one ("" = automatic)
+    QString ratesInfo;       // where/when the rates came from, e.g. "ECB via Frankfurter, 2026-11-12" ("" = typed by hand)
     QVariantMap rates;       // currency code -> how many units of homeCurrency one unit is worth (typed by the person)
 };
 
