@@ -13,6 +13,7 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QScrollBar>
 #include <QSlider>
 #include <QTableWidget>
 #include <QVBoxLayout>
@@ -321,8 +322,9 @@ EvaluatePage::EvaluatePage(QWidget* parent) : QWidget(parent) {
     scroll->setWidget(leftInner);
     scroll->setWidgetResizable(true);
     scroll->setFrameShape(QFrame::NoFrame);
-    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    scroll->setFixedWidth(450);
+    // Wide enough for the form's own minimum (fonts and DPI scaling differ), never narrower than 450.
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    scroll->setFixedWidth(qMax(450, leftInner->minimumSizeHint().width() + scroll->verticalScrollBar()->sizeHint().width() + 8));
     root->addWidget(scroll);
 
     // ---- right: results
@@ -376,6 +378,7 @@ EvaluatePage::EvaluatePage(QWidget* parent) : QWidget(parent) {
     rscroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     rscroll->setMinimumWidth(500);
     root->addWidget(rscroll, 1);
+    for (QFormLayout* f : findChildren<QFormLayout*>()) f->setRowWrapPolicy(QFormLayout::WrapLongRows);   // long labels wrap above their box instead of being clipped
 
     for (QComboBox* c : {basis_, otMode_, unit_, nwKind_, kind_}) {
         c->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);

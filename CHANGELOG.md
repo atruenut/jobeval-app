@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.7.1
+- Fix: the job input pane was clipped on the right on Windows (display scaling made the form wider than its fixed width). It now sizes itself to the form, and long labels wrap above their box.
+
 ## 0.7.0
 - Compare: type exchange rates (or press "Fetch current rates") to rank jobs paid in different currencies; "Save table as CSV…".
 - Data packs added since 0.6.0 need no new app: all 50 US states and DC, Australia, Germany, Ireland and New Zealand (see jobeval-data `docs/COVERAGE.md`; several are marked "Rough estimate").
