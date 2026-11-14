@@ -263,7 +263,7 @@ EvaluatePage::EvaluatePage(QWidget* parent) : QWidget(parent) {
     costV->addLayout(ec);
     addField(ec, "benefits", tr("Employer-paid benefits"), Unit::PerMonth, tr("Value of health, dental, life and disability cover the employer pays for."));
     addField(ec, "premiums", tr("Your benefit premiums and dues"), Unit::PerMonth, tr("Your share of premiums, union dues and similar deductions."));
-    addField(ec, "pension", tr("Pension / RRSP match"), Unit::Percent, tr("Employer pension contribution as a percent of your gross pay."));
+    addField(ec, "pension", tr("Employer pension / retirement match"), Unit::Percent, tr("Employer pension contribution as a percent of your gross pay."));
     addField(ec, "otherben", tr("Other benefits"), Unit::PerYear, tr("Anything else with a cash value: tuition, phone, meals, discounts, stock purchase match."));
     addField(ec, "workcosts", tr("Work costs you pay"), Unit::PerYear, tr("Uniforms, tools, phone, licences and similar."));
     addField(ec, "unpaid", tr("Unpaid time at work"), Unit::Minutes, tr("Per day: unpaid breaks, changing, waiting for shifts. Counted as time the job takes."));
