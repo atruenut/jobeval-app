@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.8.0
+- App icon (Windows executable and window), a fuller About box with licences and engine version, Help menu: Check for app updates (asks GitHub only when you click) and a link to the online user guide.
+
 ## 0.7.1
 - Fix: the job input pane was clipped on the right on Windows (display scaling made the form wider than its fixed width). It now sizes itself to the form, and long labels wrap above their box.
 

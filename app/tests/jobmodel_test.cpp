@@ -1,6 +1,7 @@
 #include <QtTest>
 
 #include "../Csv.hpp"
+#include "../Version.hpp"
 #include "../FxRates.hpp"
 #include "../JobModel.hpp"
 #include "../JobResult.hpp"
@@ -80,6 +81,13 @@ private Q_SLOTS:
         QCOMPARE(q.ratesInfo, p.ratesInfo);
         QCOMPARE(q.rates.value("USD").toDouble(), 1.37);
         QCOMPARE(q.rates.value("GBP").toDouble(), 1.82);
+    }
+
+    void versionCompare() {
+        QCOMPARE(compareVersions("0.7.1", "0.7.0"), 1);
+        QCOMPARE(compareVersions("v0.10.0", "0.9.9"), 1);
+        QCOMPARE(compareVersions("0.7", "0.7.0"), 0);
+        QCOMPARE(compareVersions("0.6.9", "v0.7.0"), -1);
     }
 
     void csvQuotingAndFormulaGuard() {

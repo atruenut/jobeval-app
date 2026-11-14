@@ -1,4 +1,5 @@
 #include <QApplication>
+#include <QIcon>
 #include <QCommandLineParser>
 #include <QDir>
 #include <QFile>
@@ -36,6 +37,8 @@ int main(int argc, char** argv) {
     QApplication app(argc, argv);
     QApplication::setOrganizationName("jobeval");
     QApplication::setApplicationName("jobeval");
+    QApplication::setApplicationVersion(JOBEVAL_VERSION);
+    QApplication::setWindowIcon(QIcon(":/icon.png"));
     QApplication::setStyle("Fusion");
     app.setStyleSheet(kStyle);
 
