@@ -59,6 +59,8 @@ private:
     QString suffixFor(Unit u) const;
 
     std::shared_ptr<const jobeval::Bundle> bundle_;
+    QLabel* validity_ = nullptr;   // warns when the chosen date is outside the rules' validity window
+    void updateValidity();
     QString currency_;
     bool loading_ = false;
     QLabel* regionTitle_;
