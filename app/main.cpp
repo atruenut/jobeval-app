@@ -89,7 +89,7 @@ int main(int argc, char** argv) {
         QVariantMap m;
         for (const QString& kv : cli.values("state")) {
             const int eq = kv.indexOf('=');
-            if (eq > 0) m[kv.left(eq)] = kv.mid(eq + 1).toDouble();
+            if (eq > 0) m[kv.left(eq)] = kv.left(eq) == "asof" ? QVariant(kv.mid(eq + 1)) : QVariant(kv.mid(eq + 1).toDouble());
         }
         w.applyStateToCurrent(m);
     }

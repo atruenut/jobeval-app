@@ -1,6 +1,7 @@
 # Changelog
 
 ## 0.8.0
+- A red notice above the results when "Rules as of" is outside the pack's validity window (for example a 2026 pack with a 2027 date), instead of silently using out-of-date rules.
 - App icon (Windows executable and window), a fuller About box with licences and engine version, Help menu: Check for app updates (asks GitHub only when you click) and a link to the online user guide.
 
 ## 0.7.1

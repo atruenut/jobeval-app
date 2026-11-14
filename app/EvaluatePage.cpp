@@ -315,6 +315,10 @@ EvaluatePage::EvaluatePage(QWidget* parent) : QWidget(parent) {
     notes_->setPlaceholderText(tr("Notes about this job"));
     notes_->setFixedHeight(70);
     dform->addRow(notes_);
+    validity_ = new QLabel;
+    validity_->setWordWrap(true);
+    validity_->setObjectName("error");
+    validity_->hide();
     left->addWidget(dateBox);
     left->addStretch(1);
 
@@ -331,6 +335,7 @@ EvaluatePage::EvaluatePage(QWidget* parent) : QWidget(parent) {
     auto* rightInner = new QWidget;
     auto* right = new QVBoxLayout(rightInner);
     right->setContentsMargins(0, 0, 8, 0);
+    right->addWidget(validity_);
     auto* cards = new QHBoxLayout;
     bigNumber(tr("Real hourly"), realHourly_, cap1_, cards, true);
     bigNumber(tr("Take-home per month"), monthly_, cap2_, cards, false);
@@ -401,6 +406,7 @@ EvaluatePage::EvaluatePage(QWidget* parent) : QWidget(parent) {
     connect(otMode_, &QComboBox::currentIndexChanged, this, changed);
     connect(otLegal_, &QCheckBox::toggled, this, changed);
     connect(unit_, &QComboBox::currentIndexChanged, this, changed);
+    connect(asOf_, &QDateEdit::dateChanged, this, [this]() { updateValidity(); });
     connect(asOf_, &QDateEdit::dateChanged, this, changed);
     connect(name_, &QLineEdit::textEdited, this, [this]() { emitEdited(); });
     connect(notes_, &QPlainTextEdit::textChanged, this, [this]() { if (!loading_) emitEdited(); });
@@ -565,6 +571,7 @@ void EvaluatePage::setJob(const Job& job, const std::shared_ptr<const Bundle>& b
     cov += " " + tr("Tax is computed as if this were your only income for a full year. These are estimates for "
                     "comparing jobs, not payroll-grade figures.");
     coverage_->setText(cov);
+    updateValidity();
 
     buildExtraInputs();
     for (auto it = extras_.begin(); it != extras_.end(); ++it) {
@@ -790,4 +797,22 @@ void EvaluatePage::recalc() {
         text += "    from pack " + QString::fromStdString(t.pack) + "\n\n";
     }
     explain_->setPlainText(text.trimmed());
+}
+
+// The packs are for one tax year. A date outside it still calculates (with that year's rules) but is not
+// what the law says on that date, so say so instead of staying silent.
+void EvaluatePage::updateValidity() {
+    if (!validity_) return;
+    validity_->hide();
+    if (!bundle_) return;
+    const QDate from = QDate::fromString(QString::fromStdString(bundle_->valid_from), Qt::ISODate);
+    const QDate to = QDate::fromString(QString::fromStdString(bundle_->valid_to), Qt::ISODate);
+    const QDate d = asOf_->date();
+    if (from.isValid() && d < from)
+        validity_->setText(tr("These rules start on %1, after the date you picked. Figures use them anyway and may differ from the rules in force then.").arg(from.toString(Qt::ISODate)));
+    else if (to.isValid() && d > to)
+        validity_->setText(tr("These rules ended on %1. Figures use them anyway; newer rules may differ. Check “Change region…” for an updated pack.").arg(to.toString(Qt::ISODate)));
+    else
+        return;
+    validity_->show();
 }
