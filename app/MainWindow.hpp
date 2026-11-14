@@ -16,6 +16,7 @@ class QAction;
 class QComboBox;
 class QListWidget;
 class QMenu;
+class QNetworkAccessManager;
 class QStackedWidget;
 class QTabWidget;
 class RegionPage;
@@ -62,6 +63,8 @@ private:
     void duplicateJob();
     void deleteJob();
     void renameJob();
+    void checkForUpdate();
+    QNetworkAccessManager* nam_ = nullptr;
     Job makeJob(const QString& packId) const;
     void refreshList(int select);
     void rebuildList(int select, bool notify);   // select is a project index; notify = load it into the editor

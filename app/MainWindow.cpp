@@ -20,7 +20,17 @@
 #include <QTabWidget>
 #include <QVBoxLayout>
 
+#include <QDesktopServices>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
+#include <QUrl>
+#include <evalcore/pack.hpp>
+
 #include "ComparePage.hpp"
+#include "Version.hpp"
 #include "EvaluatePage.hpp"
 #include "JobPickDialog.hpp"
 #include "PackService.hpp"
@@ -111,10 +121,17 @@ MainWindow::MainWindow(PackService* service, const QString& titleSuffix, const Q
     QMenu* help = menuBar()->addMenu(tr("&Help"));
     help->addAction(tr("&About"), this, [this]() {
         QMessageBox::about(this, tr("About Job Evaluator"),
-                           tr("<b>Job Evaluator %1</b><br>Works out what a job really pays per hour of your life.<br><br>"
+                           tr("<b>Job Evaluator %1</b> (rule engine %2.%3)<br>Works out what a job really pays per hour of your life.<br><br>"
                               "Tax and employment rules come from signed data packs published at "
-                              "github.com/atruenut/jobeval-data. Results are estimates for comparing jobs, not payroll-grade figures.")
-                               .arg(JOBEVAL_VERSION));
+                              "<a href=\"https://github.com/atruenut/jobeval-data\">github.com/atruenut/jobeval-data</a> (CC BY 4.0); "
+                              "the program is MIT licensed: <a href=\"https://github.com/atruenut/jobeval-app\">github.com/atruenut/jobeval-app</a>.<br><br>"
+                              "Results are estimates for comparing jobs, not payroll-grade figures. Everything works offline; the network is used only "
+                              "to download rule packs and, if you ask, to check for a newer version or fetch exchange rates.")
+                               .arg(JOBEVAL_VERSION).arg(jobeval::kEngineMajor).arg(jobeval::kEngineMinor));
+    });
+    help->addAction(tr("Check for app &updates"), this, [this]() { checkForUpdate(); });
+    help->addAction(tr("&User guide online"), this, []() {
+        QDesktopServices::openUrl(QUrl("https://github.com/atruenut/jobeval-app/blob/main/docs/USER_GUIDE.md"));
     });
 
     // ---- wiring
@@ -614,3 +631,28 @@ void MainWindow::setSortMode(int id) {
 }
 
 void MainWindow::setCompareScenario(const QVariantMap& v) { compare_->setScenario(v); }
+
+void MainWindow::checkForUpdate() {
+    if (!nam_) nam_ = new QNetworkAccessManager(this);
+    QNetworkRequest req(QUrl("https://api.github.com/repos/atruenut/jobeval-app/releases/latest"));
+    req.setTransferTimeout(15000);
+    req.setHeader(QNetworkRequest::UserAgentHeader, "jobeval/" JOBEVAL_VERSION);
+    QNetworkReply* reply = nam_->get(req);
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) {
+            QMessageBox::information(this, tr("Check for updates"), tr("Could not reach GitHub (%1). Nothing has changed.").arg(reply->errorString()));
+            return;
+        }
+        const QJsonObject o = QJsonDocument::fromJson(reply->readAll().left(1 << 20)).object();
+        const QString tag = o["tag_name"].toString();
+        if (tag.isEmpty()) {
+            QMessageBox::information(this, tr("Check for updates"), tr("No published release was found."));
+        } else if (compareVersions(tag, JOBEVAL_VERSION) > 0) {
+            if (QMessageBox::question(this, tr("Check for updates"), tr("Version %1 is available (you have %2). Open the download page?").arg(tag, JOBEVAL_VERSION)) == QMessageBox::Yes)
+                QDesktopServices::openUrl(QUrl(o["html_url"].toString().startsWith("https://github.com/") ? o["html_url"].toString() : QStringLiteral("https://github.com/atruenut/jobeval-app/releases")));
+        } else {
+            QMessageBox::information(this, tr("Check for updates"), tr("You have the latest version (%1).").arg(JOBEVAL_VERSION));
+        }
+    });
+}
